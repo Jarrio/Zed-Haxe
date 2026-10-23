@@ -28,7 +28,7 @@ jobs:
       - uses: krdlab/setup-haxe@v2
         with:
           haxe-version: 4.3.7
-      - run: haxelib newrepo && haxelib state load install.hxml --always
+      - run: haxelib newrepo && haxelib install install.hxml --always
       - name: bin/bridge.js matches the source
         if: matrix.os == 'ubuntu-latest'
         run: |

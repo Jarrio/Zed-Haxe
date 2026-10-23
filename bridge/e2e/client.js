@@ -10,7 +10,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** The LSP position of `marker` + `offset` characters in `text`. */
 function positionOf(text, marker, offset = 0) {
-  const at = text.indexOf(marker);
+  let at = text.indexOf(marker);
+  // Git on Windows checks files out with CRLF line endings.
+  if (at < 0 && text.includes("\r\n")) at = text.indexOf(marker.replaceAll("\n", "\r\n"));
   if (at < 0) throw new Error(`marker not found: ${JSON.stringify(marker)}`);
   const before = text.slice(0, at + offset).split("\n");
   return { line: before.length - 1, character: before[before.length - 1].length };

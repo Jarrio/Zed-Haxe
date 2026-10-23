@@ -126,7 +126,10 @@ async function runStep(client, main, step) {
     case "diagnostics": {
       const document = documentFor(client, main, step);
       const diagnostics = await client.waitForDiagnostics(document.uri);
-      if (diagnostics === null) throw new Error("no diagnostics arrived");
+      if (diagnostics === null) {
+        const arrived = [...client.diagnostics.keys()];
+        throw new Error(`no diagnostics arrived for ${document.uri}` + (arrived.length ? `; they came for ${arrived.join(", ")}` : ""));
+      }
       if (expect.atLeast !== undefined && diagnostics.length < expect.atLeast) {
         throw new Error(`expected at least ${expect.atLeast} diagnostics, got ${diagnostics.length}`);
       }

@@ -245,7 +245,7 @@ You need Haxe 4.3.7, Node.js and [Rust](https://rustup.rs/).
 ```sh
 cd bridge
 haxelib newrepo
-haxelib state load install.hxml
+haxelib install install.hxml
 haxe build.hxml   # writes bin/bridge.js, which the Rust side embeds
 haxe test.hxml    # unit tests
 node e2e/run.js   # end-to-end tests
