@@ -2,7 +2,10 @@ name: Test
 
 on:
   push:
+    # Tags run these through release.yml.
+    branches: ["**"]
   pull_request:
+  workflow_call:
 
 jobs:
   bridge:
@@ -54,10 +57,58 @@ jobs:
       - run: node bridge/e2e/run.js
         shell: bash
 
-  extension:
-    name: Extension (wasm)
+  package:
+    name: Package
     runs-on: ubuntu-latest
+    env:
+      # The CLI Zed's extension registry builds with (zed-industries/extensions).
+      ZED_EXTENSION_CLI: https://zed-extension-cli.nyc3.digitaloceanspaces.com/9ee3c503a4bbbc6b4a0f8a789acca4871d773223/x86_64-unknown-linux-gnu/zed-extension
     steps:
       - uses: actions/checkout@v5
       - run: rustup target add wasm32-wasip2
-      - run: cargo build --release --target wasm32-wasip2
+      - run: |
+          curl -fsSL -o "$RUNNER_TEMP/zed-extension" "$ZED_EXTENSION_CLI"
+          chmod +x "$RUNNER_TEMP/zed-extension"
+          mkdir -p "$RUNNER_TEMP/out" "$RUNNER_TEMP/scratch"
+          "$RUNNER_TEMP/zed-extension" --source-dir . --output-dir "$RUNNER_TEMP/out" --scratch-dir "$RUNNER_TEMP/scratch"
+          mv "$RUNNER_TEMP/out/archive.tar.gz" haxe-zed.tar.gz
+          tar -tzf haxe-zed.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: haxe-zed
+          path: haxe-zed.tar.gz
+
+  install:
+    name: Install scripts (${{ matrix.os }})
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      ZED_DATA_DIR: ${{ github.workspace }}/zed-data
+      HAXE_ZED_ARCHIVE: ${{ github.workspace }}/haxe-zed.tar.gz
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: haxe-zed
+      - name: An older install to replace
+        shell: bash
+        run: |
+          mkdir -p "$ZED_DATA_DIR/extensions/installed/haxe"
+          touch "$ZED_DATA_DIR/extensions/installed/haxe/old-file" "$ZED_DATA_DIR/extensions/index.json"
+      - if: runner.os != 'Windows'
+        run: sh scripts/install.sh
+      # Windows PowerShell 5.1, the one every Windows has.
+      - if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/install.ps1
+      - name: Installed
+        shell: bash
+        run: |
+          haxe="$ZED_DATA_DIR/extensions/installed/haxe"
+          test -f "$haxe/extension.toml" && test -f "$haxe/extension.wasm" && test -d "$haxe/languages/haxe"
+          test ! -e "$haxe/old-file"
+          test ! -e "$ZED_DATA_DIR/extensions/index.json"

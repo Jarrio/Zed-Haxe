@@ -24,6 +24,36 @@ It does the work the VS Code extensions do for vshaxe:
 - adds completion, hover and go to definition inside UI markup: HaxeUI's `@:xml` and `.xml`
   layouts, including real Haxe completion inside `onclick` handlers
 
+## Installing
+
+This version isn't in Zed's extension registry (the `haxe` extension there is Frixuu's).
+Each [release](https://github.com/Jarrio/Zed-Haxe/releases) has the packaged extension and
+scripts that install it:
+
+```sh
+# Linux, macOS
+curl -fsSL https://github.com/Jarrio/Zed-Haxe/releases/latest/download/install.sh | sh
+```
+
+```powershell
+# Windows
+irm https://github.com/Jarrio/Zed-Haxe/releases/latest/download/install.ps1 | iex
+```
+
+Then restart Zed. Run the script again to update. It replaces an installed `haxe` extension,
+whether from the registry or a dev extension (it removes the link, not your folder).
+
+Zed's extension updates would swap it back for the registry version, so turn them off for `haxe`
+in your Zed settings:
+
+```json
+"auto_update_extensions": { "haxe": false }
+```
+
+To install by hand, unpack `haxe-zed.tar.gz` into `extensions/installed/haxe` in Zed's data folder
+(`~/.local/share/zed` on Linux, `~/Library/Application Support/Zed` on macOS, `%LOCALAPPDATA%\Zed`
+on Windows), delete `extensions/index.json` next to it, and restart Zed.
+
 ## Requirements
 
 - Haxe 4.3 or newer, unless your framework brings its own (Ceramic does)
@@ -246,6 +276,10 @@ an unmodified build from the releases of the fork
 To publish a newer upstream commit, run `scripts/release-server.sh <commit>` with a Haxe 5 nightly
 on your PATH and `gh` logged in, then update `SERVER_VERSION`.
 To try a local build instead, set `server.path` to its `bin/server.js`.
+
+To publish a release of the extension, set `version` in `extension.toml`, commit, then push a
+matching tag (`git tag v0.5.0 && git push origin v0.5.0`). CI runs the tests, packages the
+extension with Zed's own `zed-extension` tool and attaches it and the install scripts to the release.
 
 ## Known limitations
 
