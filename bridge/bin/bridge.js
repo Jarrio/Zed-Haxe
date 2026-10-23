@@ -1371,7 +1371,7 @@ class bridge_lsp_MarkupFeature {
 			++_g;
 			let region = provider.regionInHaxe(text,offset);
 			if(region != null) {
-				this.answer(message,{ provider : provider, uri : uri, text : text, offset : offset, region : region, host : provider.hostInHaxe(path,text,region)});
+				this.answer(message,{ provider : provider, project : this.project(), uri : uri, text : text, offset : offset, region : region, markup : text.substring(region.start,region.end), host : provider.hostInHaxe(path,text,region)});
 				return true;
 			}
 		}
@@ -1391,18 +1391,43 @@ class bridge_lsp_MarkupFeature {
 		this.claimant(this.activeProviders(),project,path,text).then(function(provider) {
 			if(provider == null) {
 				_gthis.bridge.replyToClient(message.id,null);
-			} else {
-				_gthis.answerInFile(message,provider,project,path,uri,text,offset);
+				return;
 			}
+			provider.hostOfFile(project,path).then(function(host) {
+				_gthis.answer(message,{ provider : provider, project : project, uri : uri, text : text, offset : offset, region : { start : 0, end : text.length}, markup : text, host : host});
+			});
 		},function(error) {
 			bridge_Log.info("markup: " + Std.string(error));
 			_gthis.bridge.replyToClient(message.id,null);
 		});
 	}
-	answerInFile(message,provider,project,path,uri,text,offset) {
+	resolveItem(message) {
+		let item = message.params;
+		let data = item.data;
+		if((data != null ? data.typePath : null) == null || (data != null ? data.field : null) == null || item.documentation != null) {
+			this.bridge.replyToClient(message.id,item);
+			return;
+		}
 		let _gthis = this;
-		provider.hostOfFile(project,path).then(function(host) {
-			_gthis.answer(message,{ provider : provider, uri : uri, text : text, offset : offset, region : { start : 0, end : text.length}, host : host});
+		this.fieldDoc(data.typePath,data.field).then(function(found) {
+			let _g = [];
+			let _g1 = 0;
+			let _g2 = [found != null ? found.doc : null,(found != null ? found.style : null) == true ? "Also a style property, so it can be set from CSS." : null];
+			while(_g1 < _g2.length) {
+				let v = _g2[_g1];
+				++_g1;
+				if(v != null && v != "") {
+					_g.push(v);
+				}
+			}
+			let parts = _g;
+			if(parts.length > 0) {
+				let tmp = parts.join("\n\n");
+				item.documentation = { kind : "markdown", value : tmp};
+			}
+			_gthis.bridge.replyToClient(message.id,item);
+		},function(_) {
+			_gthis.bridge.replyToClient(message.id,item);
 		});
 	}
 	claimant(candidates,project,path,text) {
@@ -1450,199 +1475,162 @@ class bridge_lsp_MarkupFeature {
 		});
 	}
 	completion(at) {
-		let markup = at.text.substring(at.region.start,at.region.end);
-		let project = this.project();
-		let list = function(items) {
-			return { isIncomplete : false, items : items};
-		};
-		let _gthis = this;
-		let _g = bridge_markup_XmlCursor.at(markup,at.offset - at.region.start);
+		let _g = this.cursor(at);
 		switch(_g._hx_index) {
 		case 0:
 			let start = _g.start;
-			let range = this.rangeOf(at,at.region.start + start,at.offset);
-			return at.provider.tags(project,markup).then(function(tags) {
-				let list1 = list;
-				let _g = [];
-				let _g1 = 0;
-				while(_g1 < tags.length) {
-					let tag = tags[_g1];
-					++_g1;
-					let filterText = tag.filterText;
-					_g.push({ label : tag.name, kind : 7, detail : tag.typePath, filterText : filterText != null ? filterText : tag.name, textEdit : { range : range, newText : tag.name}, data : { haxeZed : true}});
-				}
-				return list1(_g);
-			});
+			return this.tagCompletion(at,start);
 		case 1:
 			let start1 = _g.start;
 			let open = _g.open;
-			let range1 = this.rangeOf(at,at.region.start + start1,at.offset);
-			return Promise.resolve(list(open == null ? [] : [{ label : open, kind : 7, textEdit : { range : range1, newText : open}, data : { haxeZed : true}}]));
+			let range = this.rangeOf(at,at.region.start + start1,at.offset);
+			return Promise.resolve(bridge_lsp_MarkupFeature.list(open == null ? [] : [{ label : open, kind : 7, textEdit : { range : range, newText : open}, data : { haxeZed : true}}]));
 		case 2:
 			let tagName = _g.tag;
 			let start2 = _g.start;
 			let present = _g.present;
-			let range2 = this.rangeOf(at,at.region.start + start2,at.offset);
-			let followedByValue = at.text.charAt(at.offset) == "=";
-			return this.tagOf(at,project,tagName,markup).then(function(tag) {
-				if(tag == null) {
-					return Promise.resolve([]);
-				} else {
-					return at.provider.attributes(project,tag).then(function(attributes) {
-						let _g = [];
-						let _g1 = 0;
-						while(_g1 < attributes.length) {
-							let attribute = attributes[_g1];
-							++_g1;
-							if(!present.includes(attribute.name)) {
-								let insert = followedByValue ? attribute.name : _gthis.snippets ? attribute.name + ("=\"$" + "1\"") : attribute.name;
-								let attribute1 = attribute.name;
-								let item = (attribute.code == true ? "1" : "0") + StringTools.lpad(Std.string(attributes.indexOf(attribute)),"0",4);
-								let item1;
-								if(attribute.code == true) {
-									item1 = { haxeZed : true};
-								} else {
-									let field = attribute.field;
-									item1 = { haxeZed : true, typePath : tag.typePath, field : field != null ? field : attribute.name};
-								}
-								let item2 = { label : attribute1, sortText : item, kind : attribute.code == true ? 23 : 10, textEdit : { range : range2, newText : insert}, data : item1};
-								if(_gthis.snippets && !followedByValue) {
-									item2.insertTextFormat = 2;
-								}
-								if(attribute.type != null) {
-									item2.detail = attribute.type;
-								}
-								if(attribute.doc != null && attribute.doc != "") {
-									item2.documentation = { kind : "markdown", value : attribute.doc};
-								}
-								_g.push(item2);
-							}
-						}
-						return _g;
-					});
-				}
-			}).then(list);
+			return this.attributeCompletion(at,tagName,start2,present);
 		case 3:
 			let tagName1 = _g.tag;
 			let attributeName = _g.attribute;
 			let value = _g.value;
 			let valueStart = _g.valueStart;
-			let valueOffset = at.offset - at.region.start - valueStart;
-			return this.codeAt(at,project,tagName1,attributeName,value,valueOffset,markup).then(function(code) {
-				if(code != null) {
-					return _gthis.compiler.display("display/completion",code.file,code.text,code.offset).then(function(result) {
-						let range = _gthis.rangeOf(at,bridge_lsp_MarkupFeature.wordStart(at.text,at.offset),at.offset);
-						let items = result != null ? result.items : null;
-						let items1 = items != null ? items : [];
-						let tmp = result != null ? result.mode : null;
-						let fieldAccess = (tmp != null ? tmp.kind : null) == 0;
-						let seen_m = new Map();
-						let converted = [];
-						let groups = [];
-						let _g = 0;
-						while(_g < items1.length) {
-							let item = items1[_g];
-							++_g;
-							let lsp = bridge_lsp_HaxeItems.completionItem(item,range);
-							if(lsp != null && !seen_m.has(lsp.label)) {
-								seen_m.set(lsp.label,true);
-								converted.push(lsp);
-								groups.push(bridge_lsp_Ranking.ofDisplayItem(item,fieldAccess));
-							}
-						}
-						return { isIncomplete : (result != null ? result.isIncomplete : null) == true, items : bridge_lsp_Ranking.apply(converted,groups,_gthis.privateMembers())};
-					});
-				}
-				return _gthis.attributesOf(at,project,tagName1,markup).then(function(attributes) {
-					let attribute = Lambda.find(attributes,function(a) {
-						return a.name == attributeName;
-					});
-					let range = _gthis.rangeOf(at,at.region.start + valueStart,at.region.start + valueStart + value.length);
-					let list1 = list;
-					let _g = [];
-					let _g1 = 0;
-					let tmp = attribute != null ? attribute.values : null;
-					let _g2 = tmp != null ? tmp : [];
-					while(_g1 < _g2.length) {
-						let value = _g2[_g1];
-						++_g1;
-						_g.push({ label : value, kind : 12, textEdit : { range : range, newText : value}, data : { haxeZed : true}});
-					}
-					return list1(_g);
-				});
-			});
+			return this.valueCompletion(at,{ tagName : tagName1, attributeName : attributeName, value : value, start : valueStart});
 		case 4:
-			return Promise.resolve(list([]));
+			return Promise.resolve(bridge_lsp_MarkupFeature.list([]));
 		}
 	}
-	hover(at) {
-		let markup = at.text.substring(at.region.start,at.region.end);
-		let project = this.project();
+	tagCompletion(at,start) {
+		let range = this.rangeOf(at,at.region.start + start,at.offset);
+		return at.provider.tags(at.project,at.markup).then(function(tags) {
+			let _g = [];
+			let _g1 = 0;
+			while(_g1 < tags.length) {
+				let tag = tags[_g1];
+				++_g1;
+				let filterText = tag.filterText;
+				_g.push({ label : tag.name, kind : 7, detail : tag.typePath, filterText : filterText != null ? filterText : tag.name, textEdit : { range : range, newText : tag.name}, data : { haxeZed : true}});
+			}
+			return bridge_lsp_MarkupFeature.list(_g);
+		});
+	}
+	attributeCompletion(at,tagName,start,present) {
+		let range = this.rangeOf(at,at.region.start + start,at.offset);
+		let followedByValue = at.text.charAt(at.offset) == "=";
 		let _gthis = this;
-		let _g = bridge_markup_XmlCursor.at(markup,at.offset - at.region.start);
+		return this.tagOf(at,tagName).then(function(tag) {
+			if(tag == null) {
+				return Promise.resolve(bridge_lsp_MarkupFeature.list([]));
+			}
+			return at.provider.attributes(at.project,tag).then(function(attributes) {
+				let _g = [];
+				let _g_current = 0;
+				let _g_array = attributes;
+				while(_g_current < _g_array.length) {
+					let _g_value = _g_array[_g_current];
+					let _g_key = _g_current++;
+					let index = _g_key;
+					let attribute = _g_value;
+					if(!present.includes(attribute.name)) {
+						_g.push(_gthis.attributeItem(attribute,index,tag,range,followedByValue));
+					}
+				}
+				return bridge_lsp_MarkupFeature.list(_g);
+			});
+		});
+	}
+	attributeItem(attribute,index,tag,range,followedByValue) {
+		let isEvent = attribute.code == true;
+		let attribute1 = attribute.name;
+		let item = (isEvent ? "1" : "0") + StringTools.lpad(index == null ? "null" : "" + index,"0",4);
+		let item1;
+		if(isEvent) {
+			item1 = { haxeZed : true};
+		} else {
+			let field = attribute.field;
+			item1 = { haxeZed : true, typePath : tag.typePath, field : field != null ? field : attribute.name};
+		}
+		let item2 = { label : attribute1, sortText : item, kind : isEvent ? 23 : 10, textEdit : { range : range, newText : followedByValue || !this.snippets ? attribute.name : attribute.name + ("=\"$" + "1\"")}, data : item1};
+		if(this.snippets && !followedByValue) {
+			item2.insertTextFormat = 2;
+		}
+		if(attribute.type != null) {
+			item2.detail = attribute.type;
+		}
+		if(attribute.doc != null && attribute.doc != "") {
+			item2.documentation = { kind : "markdown", value : attribute.doc};
+		}
+		return item2;
+	}
+	valueCompletion(at,value) {
+		let _gthis = this;
+		return this.codeAt(at,value).then(function(code) {
+			if(code != null) {
+				return _gthis.codeCompletion(at,code);
+			}
+			return _gthis.attributesOf(at,value.tagName).then(function(attributes) {
+				let attribute = Lambda.find(attributes,function(a) {
+					return a.name == value.attributeName;
+				});
+				let range = _gthis.rangeOf(at,at.region.start + value.start,at.region.start + value.start + value.value.length);
+				let _g = [];
+				let _g1 = 0;
+				let tmp = attribute != null ? attribute.values : null;
+				let _g2 = tmp != null ? tmp : [];
+				while(_g1 < _g2.length) {
+					let known = _g2[_g1];
+					++_g1;
+					_g.push({ label : known, kind : 12, textEdit : { range : range, newText : known}, data : { haxeZed : true}});
+				}
+				return bridge_lsp_MarkupFeature.list(_g);
+			});
+		});
+	}
+	codeCompletion(at,code) {
+		let _gthis = this;
+		return this.compiler.display("display/completion",code.file,code.text,code.offset).then(function(result) {
+			let range = _gthis.rangeOf(at,bridge_lsp_MarkupFeature.wordStart(at.text,at.offset),at.offset);
+			let items = result != null ? result.items : null;
+			let items1 = items != null ? items : [];
+			let tmp = result != null ? result.mode : null;
+			let fieldAccess = (tmp != null ? tmp.kind : null) == 0;
+			let seen_m = new Map();
+			let converted = [];
+			let groups = [];
+			let _g = 0;
+			while(_g < items1.length) {
+				let item = items1[_g];
+				++_g;
+				let lsp = bridge_lsp_HaxeItems.completionItem(item,range);
+				if(lsp != null && !seen_m.has(lsp.label)) {
+					seen_m.set(lsp.label,true);
+					converted.push(lsp);
+					groups.push(bridge_lsp_Ranking.ofDisplayItem(item,fieldAccess));
+				}
+			}
+			return { isIncomplete : (result != null ? result.isIncomplete : null) == true, items : bridge_lsp_Ranking.apply(converted,groups,_gthis.privateMembers())};
+		});
+	}
+	hover(at) {
+		let _gthis = this;
+		let _g = this.cursor(at);
 		switch(_g._hx_index) {
 		case 0:
 			let name = _g.name;
-			return this.tagOf(at,project,name,markup).then(function(tag) {
-				if(tag == null) {
-					return null;
-				}
-				return _gthis.typeProbe(tag.typePath,"display/hover").then(function(result) {
-					let doc = bridge_lsp_MarkupFeature.cleanDoc(result != null ? result.documentation : null);
-					let value = "```haxe\n" + tag.typePath + "\n```";
-					if(doc != null && StringTools.trim(doc) != "") {
-						value += "\n\n" + StringTools.trim(doc);
-					}
-					return { contents : { kind : "markdown", value : value}};
-				});
-			});
+			return this.tagHover(at,name);
 		case 1:
 			let name1 = _g.name;
-			return this.tagOf(at,project,name1,markup).then(function(tag) {
-				if(tag == null) {
-					return null;
-				}
-				return _gthis.typeProbe(tag.typePath,"display/hover").then(function(result) {
-					let doc = bridge_lsp_MarkupFeature.cleanDoc(result != null ? result.documentation : null);
-					let value = "```haxe\n" + tag.typePath + "\n```";
-					if(doc != null && StringTools.trim(doc) != "") {
-						value += "\n\n" + StringTools.trim(doc);
-					}
-					return { contents : { kind : "markdown", value : value}};
-				});
-			});
+			return this.tagHover(at,name1);
 		case 2:
 			let tagName = _g.tag;
 			let name2 = _g.name;
-			return this.tagOf(at,project,tagName,markup).then(function(tag) {
-				if(tag == null) {
-					return Promise.resolve(null);
-				}
-				return at.provider.attributes(project,tag).then(function(attributes) {
-					let attribute = Lambda.find(attributes,function(a) {
-						return a.name == name2;
-					});
-					if(attribute == null) {
-						return Promise.resolve(null);
-					}
-					let heading = "```haxe\n" + attribute.name + (attribute.type == null ? "" : ":" + attribute.type) + "\n```";
-					if(attribute.code == true) {
-						return Promise.resolve(bridge_lsp_MarkupFeature.markdown(heading,attribute.doc));
-					}
-					let field = attribute.field;
-					return _gthis.fieldDoc(tag.typePath,field != null ? field : attribute.name).then(function(found) {
-						let doc = found != null ? found.doc : null;
-						return bridge_lsp_MarkupFeature.markdown(heading,doc != null ? doc : attribute.doc,(found != null ? found.style : null) == true ? "Also a style property, so it can be set from CSS." : null);
-					});
-				});
-			});
+			return this.attributeHover(at,tagName,name2);
 		case 3:
 			let tagName1 = _g.tag;
 			let attributeName = _g.attribute;
 			let value = _g.value;
 			let valueStart = _g.valueStart;
-			let valueOffset = at.offset - at.region.start - valueStart;
-			return this.codeAt(at,project,tagName1,attributeName,value,valueOffset,markup,true).then(function(code) {
+			return this.codeAt(at,{ tagName : tagName1, attributeName : attributeName, value : value, start : valueStart},true).then(function(code) {
 				if(code == null) {
 					return null;
 				} else {
@@ -1653,38 +1641,72 @@ class bridge_lsp_MarkupFeature {
 			return Promise.resolve(null);
 		}
 	}
-	definition(at) {
-		let markup = at.text.substring(at.region.start,at.region.end);
-		let project = this.project();
+	tagHover(at,name) {
 		let _gthis = this;
-		let _g = bridge_markup_XmlCursor.at(markup,at.offset - at.region.start);
+		return this.tagOf(at,name).then(function(tag) {
+			if(tag == null) {
+				return null;
+			}
+			return _gthis.memberProbe(tag.typePath,null,"display/hover").then(function(result) {
+				return bridge_lsp_MarkupFeature.markdown("```haxe\n" + tag.typePath + "\n```",bridge_lsp_MarkupFeature.cleanDoc(result != null ? result.documentation : null));
+			});
+		});
+	}
+	attributeHover(at,tagName,name) {
+		let _gthis = this;
+		return this.tagOf(at,tagName).then(function(tag) {
+			if(tag == null) {
+				return Promise.resolve(null);
+			}
+			return at.provider.attributes(at.project,tag).then(function(attributes) {
+				let attribute = Lambda.find(attributes,function(a) {
+					return a.name == name;
+				});
+				if(attribute == null) {
+					return Promise.resolve(null);
+				}
+				let heading = "```haxe\n" + attribute.name + (attribute.type == null ? "" : ":" + attribute.type) + "\n```";
+				if(attribute.code == true) {
+					return Promise.resolve(bridge_lsp_MarkupFeature.markdown(heading,attribute.doc));
+				}
+				let field = attribute.field;
+				return _gthis.fieldDoc(tag.typePath,field != null ? field : attribute.name).then(function(found) {
+					let doc = found != null ? found.doc : null;
+					return bridge_lsp_MarkupFeature.markdown(heading,doc != null ? doc : attribute.doc,(found != null ? found.style : null) == true ? "Also a style property, so it can be set from CSS." : null);
+				});
+			});
+		});
+	}
+	definition(at) {
+		let _gthis = this;
+		let _g = this.cursor(at);
 		switch(_g._hx_index) {
 		case 0:
 			let name = _g.name;
-			return this.tagOf(at,project,name,markup).then(function(tag) {
+			return this.tagOf(at,name).then(function(tag) {
 				if(tag == null) {
 					return null;
 				} else {
-					return _gthis.typeProbe(tag.typePath,"display/definition").then(bridge_lsp_HaxeItems.locations);
+					return _gthis.memberProbe(tag.typePath,null,"display/definition").then(bridge_lsp_HaxeItems.locations);
 				}
 			});
 		case 1:
 			let name1 = _g.name;
-			return this.tagOf(at,project,name1,markup).then(function(tag) {
+			return this.tagOf(at,name1).then(function(tag) {
 				if(tag == null) {
 					return null;
 				} else {
-					return _gthis.typeProbe(tag.typePath,"display/definition").then(bridge_lsp_HaxeItems.locations);
+					return _gthis.memberProbe(tag.typePath,null,"display/definition").then(bridge_lsp_HaxeItems.locations);
 				}
 			});
 		case 2:
 			let tagName = _g.tag;
 			let name2 = _g.name;
-			return this.tagOf(at,project,tagName,markup).then(function(tag) {
+			return this.tagOf(at,tagName).then(function(tag) {
 				if(tag == null) {
 					return null;
 				}
-				return _gthis.attributesOf(at,project,tagName,markup).then(function(attributes) {
+				return at.provider.attributes(at.project,tag).then(function(attributes) {
 					let attribute = Lambda.find(attributes,function(a) {
 						return a.name == name2;
 					});
@@ -1692,7 +1714,7 @@ class bridge_lsp_MarkupFeature {
 						return null;
 					} else {
 						let field = attribute.field;
-						return _gthis.fieldProbe(tag.typePath,field != null ? field : attribute.name).then(bridge_lsp_HaxeItems.locations);
+						return _gthis.memberProbe(tag.typePath,field != null ? field : attribute.name,"display/definition").then(bridge_lsp_HaxeItems.locations);
 					}
 				});
 			});
@@ -1701,13 +1723,12 @@ class bridge_lsp_MarkupFeature {
 			let attributeName = _g.attribute;
 			let value = _g.value;
 			let valueStart = _g.valueStart;
-			let valueOffset = at.offset - at.region.start - valueStart;
-			return this.codeAt(at,project,tagName1,attributeName,value,valueOffset,markup,true).then(function(code) {
+			return this.codeAt(at,{ tagName : tagName1, attributeName : attributeName, value : value, start : valueStart},true).then(function(code) {
 				if(code == null) {
 					return null;
 				} else {
 					return _gthis.compiler.display("display/definition",code.file,code.text,code.offset).then(function(result) {
-						return bridge_lsp_MarkupFeature.realLocations(code,bridge_lsp_HaxeItems.locations(result));
+						return code.realLocations(bridge_lsp_HaxeItems.locations(result));
 					});
 				}
 			});
@@ -1716,16 +1737,14 @@ class bridge_lsp_MarkupFeature {
 		}
 	}
 	signatureHelp(at) {
-		let markup = at.text.substring(at.region.start,at.region.end);
 		let _gthis = this;
-		let _g = bridge_markup_XmlCursor.at(markup,at.offset - at.region.start);
+		let _g = this.cursor(at);
 		if(_g._hx_index == 3) {
 			let tagName = _g.tag;
 			let attributeName = _g.attribute;
 			let value = _g.value;
 			let valueStart = _g.valueStart;
-			let valueOffset = at.offset - at.region.start - valueStart;
-			return this.codeAt(at,this.project(),tagName,attributeName,value,valueOffset,markup).then(function(code) {
+			return this.codeAt(at,{ tagName : tagName, attributeName : attributeName, value : value, start : valueStart}).then(function(code) {
 				if(code == null) {
 					return null;
 				} else {
@@ -1736,33 +1755,36 @@ class bridge_lsp_MarkupFeature {
 			return Promise.resolve(null);
 		}
 	}
-	codeAt(at,project,tagName,attributeName,value,valueOffset,markup,whole) {
+	codeAt(at,value,whole) {
 		if(whole == null) {
 			whole = false;
 		}
 		let _gthis = this;
-		return this.tagOf(at,project,tagName,markup).then(function(tag) {
+		return this.tagOf(at,value.tagName).then(function(tag) {
 			if(tag == null) {
 				return null;
 			}
-			return at.provider.codeContext(project,tag,attributeName,markup,at.host).then(function(context) {
+			return at.provider.codeContext(at.project,tag,value.attributeName,at.markup,at.host).then(function(context) {
 				if(context == null) {
 					return null;
 				}
 				let host = context.host;
-				let host1 = host != null ? host : project.defaultHost();
+				let host1 = host != null ? host : at.project.defaultHost();
 				let hostText = host1 == null ? null : _gthis.readFile(host1.file);
 				if(host1 == null || hostText == null) {
 					return null;
 				}
-				let before = HxOverrides.substr(value,0,valueOffset);
-				let after = whole ? HxOverrides.substr(value,valueOffset,null) : "";
-				if(context.thisAlias != null) {
-					let _this_r = new RegExp("\\bthis\\b","g".split("u").join(""));
-					before = js_lib_NativeStringTools.replace(before,_this_r,context.thisAlias);
-					let _this_r1 = new RegExp("\\bthis\\b","g".split("u").join(""));
-					after = js_lib_NativeStringTools.replace(after,_this_r1,context.thisAlias);
-				}
+				let valueOffset = at.offset - at.region.start - value.start;
+				let rename = function(code) {
+					if(context.thisAlias == null) {
+						return code;
+					} else {
+						let _this_r = new RegExp("\\bthis\\b","g".split("u").join(""));
+						return js_lib_NativeStringTools.replace(code,_this_r,context.thisAlias);
+					}
+				};
+				let before = rename(HxOverrides.substr(value.value,0,valueOffset));
+				let after = whole ? rename(HxOverrides.substr(value.value,valueOffset,null)) : "";
 				let declarations = "";
 				if(context.thisType != null) {
 					let tmp = context.thisAlias;
@@ -1780,39 +1802,25 @@ class bridge_lsp_MarkupFeature {
 					let type = _g_value;
 					declarations += "var " + name + ":" + type + " = null; ";
 				}
-				let method = "\n\tfunction haxeZedProbe() { " + declarations + "{ " + before;
-				let rest = "" + after + "; } }\n";
 				let edits = [];
-				if(bridge_util_Uris.toPath(at.uri) == host1.file && !bridge_lsp_MarkupFeature.parses(markup)) {
-					edits.push({ at : at.region.start, removed : at.region.end - at.region.start, text : bridge_lsp_MarkupFeature.rootOnly(markup)});
+				if(bridge_util_Uris.toPath(at.uri) == host1.file && !bridge_lsp_MarkupFeature.parses(at.markup)) {
+					edits.push({ at : at.region.start, removed : at.region.end - at.region.start, text : bridge_lsp_MarkupFeature.rootOnly(at.markup)});
 				}
-				return bridge_lsp_MarkupFeature.insertIntoClass(host1,hostText,method,rest,edits);
+				return bridge_lsp_Probe.inClass(host1.file,hostText,host1.className,"\n\tfunction haxeZedProbe() { " + declarations + "{ " + before,"" + after + "; } }\n",edits);
 			});
 		});
 	}
-	typeProbe(typePath,method) {
+	memberProbe(typePath,field,method) {
 		let host = this.defaultHost();
 		let text = host == null ? null : this.readFile(host.file);
 		if(host == null || text == null) {
 			return Promise.resolve(null);
 		}
-		let code = "var haxeZedValue:" + typePath + " = null;";
-		let probe = text + ("\nprivate class HaxeZedProbe { static function haxeZedProbe() { " + code + " } }\n");
-		let offset = probe.lastIndexOf(code) + "var haxeZedValue:".length + typePath.length - 1;
-		return this.compiler.display(method,host.file,probe,offset);
-	}
-	fieldProbe(typePath,field,method) {
-		if(method == null) {
-			method = "display/definition";
-		}
-		let host = this.defaultHost();
-		let text = host == null ? null : this.readFile(host.file);
-		if(host == null || text == null) {
-			return Promise.resolve(null);
-		}
-		let code = "var haxeZedValue:" + typePath + " = null; haxeZedValue." + field + ";";
-		let probe = text + ("\nprivate class HaxeZedProbe { static function haxeZedProbe() { " + code + " } }\n");
-		return this.compiler.display(method,host.file,probe,probe.lastIndexOf(code) + code.length - 2);
+		let declaration = "var haxeZedValue:" + typePath + " = null;";
+		let code = field == null ? declaration : "" + declaration + " haxeZedValue." + field + ";";
+		let at = field == null ? "var haxeZedValue:".length + typePath.length - 1 : code.length - 2;
+		let probe = bridge_lsp_Probe.atEnd(host.file,text,code,at);
+		return this.compiler.display(method,probe.file,probe.text,probe.offset);
 	}
 	fieldDoc(typePath,field) {
 		let key = "" + typePath + "." + field;
@@ -1820,7 +1828,7 @@ class bridge_lsp_MarkupFeature {
 		if(cached != null) {
 			return cached;
 		}
-		let result = this.fieldProbe(typePath,field,"display/hover").then(function(hover) {
+		let result = this.memberProbe(typePath,field,"display/hover").then(function(hover) {
 			if(hover == null) {
 				return null;
 			}
@@ -1837,48 +1845,22 @@ class bridge_lsp_MarkupFeature {
 		this.docCache.m.set(key,result);
 		return result;
 	}
-	resolveItem(message) {
-		let item = message.params;
-		let data = item.data;
-		if((data != null ? data.typePath : null) == null || (data != null ? data.field : null) == null || item.documentation != null) {
-			this.bridge.replyToClient(message.id,item);
-			return;
-		}
-		let _gthis = this;
-		this.fieldDoc(data.typePath,data.field).then(function(found) {
-			let _g = [];
-			let _g1 = 0;
-			let _g2 = [found != null ? found.doc : null,(found != null ? found.style : null) == true ? "Also a style property, so it can be set from CSS." : null];
-			while(_g1 < _g2.length) {
-				let v = _g2[_g1];
-				++_g1;
-				if(v != null && v != "") {
-					_g.push(v);
-				}
-			}
-			let parts = _g;
-			if(parts.length > 0) {
-				let tmp = parts.join("\n\n");
-				item.documentation = { kind : "markdown", value : tmp};
-			}
-			_gthis.bridge.replyToClient(message.id,item);
-		},function(_) {
-			_gthis.bridge.replyToClient(message.id,item);
-		});
+	cursor(at) {
+		return bridge_markup_XmlCursor.at(at.markup,at.offset - at.region.start);
 	}
-	tagOf(at,project,name,markup) {
-		return at.provider.tags(project,markup).then(function(tags) {
+	tagOf(at,name) {
+		return at.provider.tags(at.project,at.markup).then(function(tags) {
 			return Lambda.find(tags,function(tag) {
 				return at.provider.matchesTag(tag,name);
 			});
 		});
 	}
-	attributesOf(at,project,tagName,markup) {
-		return this.tagOf(at,project,tagName,markup).then(function(tag) {
+	attributesOf(at,tagName) {
+		return this.tagOf(at,tagName).then(function(tag) {
 			if(tag == null) {
 				return Promise.resolve([]);
 			} else {
-				return at.provider.attributes(project,tag);
+				return at.provider.attributes(at.project,tag);
 			}
 		});
 	}
@@ -1982,6 +1964,21 @@ class bridge_lsp_MarkupFeature {
 	static createProviders() {
 		return [new bridge_markup_HaxeUiProvider()];
 	}
+	static list(items) {
+		return { isIncomplete : false, items : items};
+	}
+	static markdown(heading,doc,note) {
+		let value = heading;
+		let part = doc;
+		if(part != null && StringTools.trim(part) != "") {
+			value += "\n\n" + StringTools.trim(part);
+		}
+		let part1 = note;
+		if(part1 != null && StringTools.trim(part1) != "") {
+			value += "\n\n" + StringTools.trim(part1);
+		}
+		return { contents : { kind : "markdown", value : value}};
+	}
 	static parses(markup) {
 		try {
 			Xml.parse(markup);
@@ -1999,83 +1996,6 @@ class bridge_lsp_MarkupFeature {
 		let root = tmp != null ? tmp.name : null;
 		let root1 = root != null ? root : "box";
 		return "<" + root1 + " />";
-	}
-	static insertIntoClass(host,text,head,tail,edits) {
-		let declaration = new EReg("\\bclass\\s+" + host.className + "\\b[^{]*\\{","");
-		let found = declaration.match(text);
-		let at = found ? declaration.matchedPos().pos + declaration.matchedPos().len : text.length;
-		let opening = found ? head : "\nprivate class HaxeZedProbe {" + head;
-		let all = edits.concat([{ at : at, removed : 0, text : opening + tail + (found ? "" : "}\n")}]);
-		all.sort(function(a,b) {
-			return a.at - b.at;
-		});
-		let shift = 0;
-		let _g = 0;
-		while(_g < all.length) {
-			let edit = all[_g];
-			++_g;
-			if(edit.at < at) {
-				shift += edit.text.length - edit.removed;
-			}
-		}
-		return { file : host.file, text : bridge_lsp_MarkupFeature.applyEdits(text,all), offset : at + shift + opening.length, original : text, edits : all};
-	}
-	static applyEdits(text,edits) {
-		let result_b = "";
-		let last = 0;
-		let _g = 0;
-		while(_g < edits.length) {
-			let edit = edits[_g];
-			++_g;
-			result_b += Std.string(text.substring(last,edit.at));
-			result_b += Std.string(edit.text);
-			last = edit.at + edit.removed;
-		}
-		result_b += Std.string(HxOverrides.substr(text,last,null));
-		return result_b;
-	}
-	static toOriginal(edits,offset) {
-		let shift = 0;
-		let _g = 0;
-		while(_g < edits.length) {
-			let edit = edits[_g];
-			++_g;
-			let start = edit.at + shift;
-			if(offset < start) {
-				break;
-			}
-			if(offset < start + edit.text.length) {
-				return edit.at;
-			}
-			shift += edit.text.length - edit.removed;
-		}
-		return offset - shift;
-	}
-	static realLocations(code,locations) {
-		let uri = bridge_util_Uris.fromPath(code.file);
-		let _g = 0;
-		while(_g < locations.length) {
-			let location = locations[_g];
-			++_g;
-			if(location.uri == uri) {
-				let start = bridge_lsp_MarkupFeature.toOriginal(code.edits,bridge_lsp_Documents.offsetAt(code.text,location.range.start));
-				let end = bridge_lsp_MarkupFeature.toOriginal(code.edits,bridge_lsp_Documents.offsetAt(code.text,location.range.end));
-				location.range = { start : bridge_lsp_Documents.positionAt(code.original,start), end : bridge_lsp_Documents.positionAt(code.original,end)};
-			}
-		}
-		return locations;
-	}
-	static markdown(heading,doc,note) {
-		let value = heading;
-		let part = doc;
-		if(part != null && StringTools.trim(part) != "") {
-			value += "\n\n" + StringTools.trim(part);
-		}
-		let part1 = note;
-		if(part1 != null && StringTools.trim(part1) != "") {
-			value += "\n\n" + StringTools.trim(part1);
-		}
-		return { contents : { kind : "markdown", value : value}};
 	}
 	static cleanDoc(doc) {
 		if(doc == null) {
@@ -2131,6 +2051,90 @@ class bridge_lsp_MarkupFeature {
 bridge_lsp_MarkupFeature.__name__ = "bridge.lsp.MarkupFeature";
 Object.assign(bridge_lsp_MarkupFeature.prototype, {
 	__class__: bridge_lsp_MarkupFeature
+});
+class bridge_lsp_Probe {
+	constructor(file,original,edits,offset) {
+		this.file = file;
+		this.original = original;
+		this.edits = edits;
+		this.offset = offset;
+		this.text = bridge_lsp_Probe.apply(original,edits);
+	}
+	toOriginal(offset) {
+		let shift = 0;
+		let _g = 0;
+		let _g1 = this.edits;
+		while(_g < _g1.length) {
+			let edit = _g1[_g];
+			++_g;
+			let start = edit.at + shift;
+			if(offset < start) {
+				break;
+			}
+			if(offset < start + edit.text.length) {
+				return edit.at;
+			}
+			shift += edit.text.length - edit.removed;
+		}
+		return offset - shift;
+	}
+	realLocations(locations) {
+		let uri = bridge_util_Uris.fromPath(this.file);
+		let _g = 0;
+		while(_g < locations.length) {
+			let location = locations[_g];
+			++_g;
+			if(location.uri == uri) {
+				let start = this.toOriginal(bridge_lsp_Documents.offsetAt(this.text,location.range.start));
+				let end = this.toOriginal(bridge_lsp_Documents.offsetAt(this.text,location.range.end));
+				location.range = { start : bridge_lsp_Documents.positionAt(this.original,start), end : bridge_lsp_Documents.positionAt(this.original,end)};
+			}
+		}
+		return locations;
+	}
+	static inClass(file,text,className,head,tail,edits) {
+		let declaration = new EReg("\\bclass\\s+" + className + "\\b[^{]*\\{","");
+		let found = declaration.match(text);
+		let at = found ? declaration.matchedPos().pos + declaration.matchedPos().len : text.length;
+		let opening = found ? head : "\nprivate class HaxeZedProbe {" + head;
+		let all = edits.concat([{ at : at, removed : 0, text : opening + tail + (found ? "" : "}\n")}]);
+		all.sort(function(a,b) {
+			return a.at - b.at;
+		});
+		let shift = 0;
+		let _g = 0;
+		while(_g < all.length) {
+			let edit = all[_g];
+			++_g;
+			if(edit.at < at) {
+				shift += edit.text.length - edit.removed;
+			}
+		}
+		return new bridge_lsp_Probe(file,text,all,at + shift + opening.length);
+	}
+	static atEnd(file,text,code,offsetInCode) {
+		let opening = "\nprivate class HaxeZedProbe { static function haxeZedProbe() { ";
+		let edit = { at : text.length, removed : 0, text : opening + code + " } }\n"};
+		return new bridge_lsp_Probe(file,text,[edit],text.length + opening.length + offsetInCode);
+	}
+	static apply(text,edits) {
+		let result_b = "";
+		let last = 0;
+		let _g = 0;
+		while(_g < edits.length) {
+			let edit = edits[_g];
+			++_g;
+			result_b += Std.string(text.substring(last,edit.at));
+			result_b += Std.string(edit.text);
+			last = edit.at + edit.removed;
+		}
+		result_b += Std.string(HxOverrides.substr(text,last,null));
+		return result_b;
+	}
+}
+bridge_lsp_Probe.__name__ = "bridge.lsp.Probe";
+Object.assign(bridge_lsp_Probe.prototype, {
+	__class__: bridge_lsp_Probe
 });
 class bridge_lsp_Ranking {
 	static ofServerItem(item,context) {

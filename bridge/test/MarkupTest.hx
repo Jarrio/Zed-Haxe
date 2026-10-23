@@ -226,18 +226,24 @@ class MarkupTest extends utest.Test {
 		Assert.isFalse(bridge.lsp.MarkupFeature.parses(markup)); // a tag is half typed
 		Assert.equals("<vbox />", bridge.lsp.MarkupFeature.rootOnly(markup));
 
-		final host:HostClass = {file: "/p/Windows.hx", className: "Windows"};
 		final edits = [{at: markupStart, removed: markupEnd - markupStart, text: "<vbox />"}];
-		final probe = bridge.lsp.MarkupFeature.insertIntoClass(host, text, "\n\tfunction haxeZedProbe() { { onCl", "; } }\n", edits);
+		final probe = bridge.lsp.Probe.inClass("/p/Windows.hx", text, "Windows", "\n\tfunction haxeZedProbe() { { onCl", "; } }\n", edits);
 		Assert.equals("@:xml('<vbox />')\nclass Windows {\n\tfunction haxeZedProbe() { { onCl; } }\n\n\tfunction onClick() {}\n}", probe.text);
 		Assert.equals("onCl", probe.text.substring(probe.offset - 4, probe.offset));
 
 		// Haxe's answer for `onClick` points into the probe's text: line 4 there is line 3 in the file.
 		final inProbe = probe.text.indexOf("onClick");
 		final location = {uri: "file:///p/Windows.hx", range: {start: bridge.lsp.Documents.positionAt(probe.text, inProbe), end: bridge.lsp.Documents.positionAt(probe.text, inProbe + 7)}};
-		final real:Dynamic = bridge.lsp.MarkupFeature.realLocations(probe, [location])[0];
+		final real:Dynamic = probe.realLocations([location])[0];
 		Assert.same({line: 3, character: 10}, real.range.start);
 		Assert.same({line: 3, character: 17}, real.range.end);
+	}
+
+	function testProbeAtTheEndOfAFile() {
+		final probe = bridge.lsp.Probe.atEnd("/p/Main.hx", "class Main {}", "var haxeZedValue:Button = null;", 22);
+		Assert.equals("class Main {}\nprivate class HaxeZedProbe { static function haxeZedProbe() { var haxeZedValue:Button = null; } }\n", probe.text);
+		Assert.equals("n", probe.text.charAt(probe.offset)); // the last character of `Button`
+		Assert.equals(4, probe.toOriginal(4)); // the file's own text doesn't move
 	}
 
 	function testLocationsSkipNothing() {
