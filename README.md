@@ -56,8 +56,12 @@ on Windows), delete `extensions/index.json` next to it, and restart Zed.
 
 ## Requirements
 
-- Haxe 4.3 or newer, unless your framework brings its own (Ceramic does)
+- Haxe 4.0 or newer, including Haxe 5 nightlies, unless your framework brings its own (Ceramic does).
+  Library docs for defines and metadata (see below) need Haxe 4.3. Haxe 3 gets the server's
+  limited fallback mode.
 - The libraries your project uses, installed as usual (`haxelib install`, `lix download`, ...)
+
+Building the extension yourself needs Haxe 4.3.7; see "Development".
 
 ## What gets detected
 
