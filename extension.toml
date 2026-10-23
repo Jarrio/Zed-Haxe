@@ -1,8 +1,8 @@
 id = "haxe"
 name = "Haxe"
-version = "0.4.0"
+version = "0.5.0"
 schema_version = 1
-authors = ["Frixuu <kontakt@lukasz.xyz>"]
+authors = ["Frixuu <kontakt@lukasz.xyz>", "Jarrio"]
 description = "Language server and syntax highlighting support for the Haxe programming language."
 repository = "https://github.com/Frixuu/Zed-Haxe"
 
@@ -17,9 +17,11 @@ rev = "6199e87f50afedab695de1c835430da424ed4ca9"
 
 [language_servers.haxe-language-server]
 name = "Haxe Language Server"
-languages = ["Haxe", "HXML"]
+# XML comes from Zed's XML extension; the bridge answers completion and hover in UI layouts (HaxeUI).
+languages = ["Haxe", "HXML", "XML"]
 
-[[capabilities]]
-kind = "process:exec"
-command = "*"
-args = ["-e", "*", "--", "**"]
+[language_servers.haxe-language-server.language_ids]
+"Haxe" = "haxe"
+"HXML" = "hxml"
+"XML" = "xml"
+
