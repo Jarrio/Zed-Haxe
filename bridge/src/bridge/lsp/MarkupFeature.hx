@@ -321,7 +321,8 @@ class MarkupFeature {
 			case AttributeValue(tagName, attributeName, value, valueStart):
 				final valueOffset = at.offset - at.region.start - valueStart;
 				codeAt(at, project, tagName, attributeName, value, valueOffset, markup, true).then(function(code:Null<Probe>) {
-					return code == null ? null : compiler.display("display/definition", code.file, code.text, code.offset).then(HaxeItems.locations);
+					return code == null ? null : compiler.display("display/definition", code.file, code.text, code.offset)
+						.then(result -> realLocations(code, HaxeItems.locations(result)));
 				});
 			case Other:
 				Promise.resolve(null);
@@ -376,21 +377,86 @@ class MarkupFeature {
 				}
 				final method = '\n\tfunction haxeZedProbe() { $declarations{ $before';
 				final rest = '$after; } }\n';
-				return insertIntoClass(host, hostText, method, rest);
+				final edits:Array<TextEdit> = [];
+				if (Rewrites.uriToPath(at.uri) == host.file && !parses(markup)) {
+					// HaxeUI's build macro parses @:xml, so while a tag is half typed the class doesn't compile and the
+					// probe finds nothing. The ids are locals of the probe already, so its root element is enough.
+					edits.push({at: at.region.start, removed: at.region.end - at.region.start, text: rootOnly(markup)});
+				}
+				return insertIntoClass(host, hostText, method, rest, edits);
 			});
 		});
 	}
 
-	/** Puts `head + tail` at the start of `host`'s class body; the probe offset is between the two. **/
-	static function insertIntoClass(host:HostClass, text:String, head:String, tail:String):Null<Probe> {
+	static function parses(markup:String):Bool {
+		return try {
+			Xml.parse(markup);
+			true;
+		} catch (_) false;
+	}
+
+	/** `<vbox width="100%">...` -> `<vbox />`. **/
+	static function rootOnly(markup:String):String {
+		final root = XmlCursor.elements(markup)[0]?.name ?? "box";
+		return '<$root />';
+	}
+
+	/** Puts `head + tail` at the start of `host`'s class body, after `edits`; the probe offset is between the two. **/
+	static function insertIntoClass(host:HostClass, text:String, head:String, tail:String, edits:Array<TextEdit>):Probe {
 		final declaration = new EReg('\\bclass\\s+${host.className}\\b[^{]*\\{', "");
-		if (!declaration.match(text)) {
-			final appended = text + '\nprivate class HaxeZedProbe {$head';
-			return {file: host.file, text: appended + tail + "}\n", offset: appended.length};
+		final found = declaration.match(text);
+		final at = found ? declaration.matchedPos().pos + declaration.matchedPos().len : text.length;
+		final opening = found ? head : '\nprivate class HaxeZedProbe {$head';
+		final all = edits.concat([{at: at, removed: 0, text: opening + tail + (found ? "" : "}\n")}]);
+		all.sort((a, b) -> a.at - b.at);
+		var shift = 0;
+		for (edit in all) {
+			if (edit.at < at) {
+				shift += edit.text.length - edit.removed;
+			}
 		}
-		final bodyStart = declaration.matchedPos().pos + declaration.matchedPos().len;
-		final before = text.substr(0, bodyStart) + head;
-		return {file: host.file, text: before + tail + text.substr(bodyStart), offset: before.length};
+		return {file: host.file, text: applyEdits(text, all), offset: at + shift + opening.length, original: text, edits: all};
+	}
+
+	static function applyEdits(text:String, edits:Array<TextEdit>):String {
+		final result = new StringBuf();
+		var last = 0;
+		for (edit in edits) {
+			result.add(text.substring(last, edit.at));
+			result.add(edit.text);
+			last = edit.at + edit.removed;
+		}
+		result.add(text.substr(last));
+		return result.toString();
+	}
+
+	/** Where an offset in the probe's text is in the real file; inside inserted text, the start of the edit. **/
+	static function toOriginal(edits:Array<TextEdit>, offset:Int):Int {
+		var shift = 0;
+		for (edit in edits) {
+			final start = edit.at + shift;
+			if (offset < start) {
+				break;
+			}
+			if (offset < start + edit.text.length) {
+				return edit.at;
+			}
+			shift += edit.text.length - edit.removed;
+		}
+		return offset - shift;
+	}
+
+	/** Locations Haxe gave in the probe's text, moved to where they are in the real file. **/
+	static function realLocations(code:Probe, locations:Array<Dynamic>):Array<Dynamic> {
+		final uri = Rewrites.pathToUri(code.file);
+		for (location in locations) {
+			if (location.uri == uri) {
+				final start = toOriginal(code.edits, Documents.offsetAt(code.text, location.range.start));
+				final end = toOriginal(code.edits, Documents.offsetAt(code.text, location.range.end));
+				location.range = {start: Documents.positionAt(code.original, start), end: Documents.positionAt(code.original, end)};
+			}
+		}
+		return locations;
 	}
 
 	/** Hover or definition of a type, asked at its name in `var haxeZedValue:Type = null;`. **/
@@ -594,4 +660,14 @@ private typedef Probe = {
 	final file:String;
 	final text:String;
 	final offset:Int;
+
+	/** The file's own text, and the edits that made `text` from it (in order, offsets in `original`). **/
+	final original:String;
+	final edits:Array<TextEdit>;
+}
+
+private typedef TextEdit = {
+	final at:Int;
+	final removed:Int;
+	final text:String;
 }

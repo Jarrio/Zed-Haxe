@@ -85,6 +85,9 @@ class EReg {
 	}
 }
 EReg.__name__ = "EReg";
+Object.assign(EReg.prototype, {
+	__class__: EReg
+});
 class HxOverrides {
 	static dateStr(date) {
 		let m = date.getMonth() + 1;
@@ -114,6 +117,14 @@ class HxOverrides {
 			len = s.length + len - pos;
 		}
 		return s.substr(pos,len);
+	}
+	static remove(a,obj) {
+		let i = a.indexOf(obj);
+		if(i == -1) {
+			return false;
+		}
+		a.splice(i,1);
+		return true;
 	}
 	static now() {
 		return Date.now();
@@ -209,7 +220,65 @@ class Std {
 	}
 }
 Std.__name__ = "Std";
+class StringBuf {
+	constructor() {
+		this.b = "";
+	}
+}
+StringBuf.__name__ = "StringBuf";
+Object.assign(StringBuf.prototype, {
+	__class__: StringBuf
+});
 class StringTools {
+	static htmlEscape(s,quotes) {
+		if(quotes == null) {
+			quotes = false;
+		}
+		let buf_b = "";
+		let _g_offset = 0;
+		let _g_s = s;
+		while(_g_offset < _g_s.length) {
+			let s = _g_s;
+			let index = _g_offset++;
+			let c = s.charCodeAt(index);
+			if(c >= 55296 && c <= 56319) {
+				c = c - 55232 << 10 | s.charCodeAt((index + 1)) & 1023;
+			}
+			let c1 = c;
+			if(c1 >= 65536) {
+				++_g_offset;
+			}
+			let code = c1;
+			switch(code) {
+			case 34:
+				if(quotes) {
+					buf_b += "&quot;";
+				} else {
+					buf_b += String.fromCodePoint(code);
+				}
+				break;
+			case 38:
+				buf_b += "&amp;";
+				break;
+			case 39:
+				if(quotes) {
+					buf_b += "&#039;";
+				} else {
+					buf_b += String.fromCodePoint(code);
+				}
+				break;
+			case 60:
+				buf_b += "&lt;";
+				break;
+			case 62:
+				buf_b += "&gt;";
+				break;
+			default:
+				buf_b += String.fromCodePoint(code);
+			}
+		}
+		return buf_b;
+	}
 	static isSpace(s,pos) {
 		let c = HxOverrides.cca(s,pos);
 		return c > 8 && c < 14 || c == 32;
@@ -243,6 +312,146 @@ class StringTools {
 	}
 }
 StringTools.__name__ = "StringTools";
+class XmlType {
+	static toString(this1) {
+		switch(this1) {
+		case 0:
+			return "Element";
+		case 1:
+			return "PCData";
+		case 2:
+			return "CData";
+		case 3:
+			return "Comment";
+		case 4:
+			return "DocType";
+		case 5:
+			return "ProcessingInstruction";
+		case 6:
+			return "Document";
+		}
+	}
+}
+class Xml {
+	constructor(nodeType) {
+		this.nodeType = nodeType;
+		switch(nodeType) {
+		case Xml.Document:
+			this.children = [];
+			break;
+		case Xml.Element:
+			this.children = [];
+			this.attributeMap = new haxe_ds_StringMap();
+			break;
+		default:
+		}
+	}
+	get(att) {
+		if(this.nodeType != Xml.Element) {
+			throw haxe_Exception.thrown("Bad node type, expected Element but found " + (this.nodeType == null ? "null" : XmlType.toString(this.nodeType)));
+		}
+		return this.attributeMap.m.get(att);
+	}
+	set(att,value) {
+		if(this.nodeType != Xml.Element) {
+			throw haxe_Exception.thrown("Bad node type, expected Element but found " + (this.nodeType == null ? "null" : XmlType.toString(this.nodeType)));
+		}
+		this.attributeMap.m.set(att,value);
+	}
+	exists(att) {
+		if(this.nodeType != Xml.Element) {
+			throw haxe_Exception.thrown("Bad node type, expected Element but found " + (this.nodeType == null ? "null" : XmlType.toString(this.nodeType)));
+		}
+		return this.attributeMap.m.has(att);
+	}
+	attributes() {
+		if(this.nodeType != Xml.Element) {
+			throw haxe_Exception.thrown("Bad node type, expected Element but found " + (this.nodeType == null ? "null" : XmlType.toString(this.nodeType)));
+		}
+		return new js_lib_HaxeIterator(this.attributeMap.m.keys());
+	}
+	addChild(x) {
+		if(this.nodeType != Xml.Document && this.nodeType != Xml.Element) {
+			throw haxe_Exception.thrown("Bad node type, expected Element or Document but found " + (this.nodeType == null ? "null" : XmlType.toString(this.nodeType)));
+		}
+		if(x.parent != null) {
+			x.parent.removeChild(x);
+		}
+		this.children.push(x);
+		x.parent = this;
+	}
+	removeChild(x) {
+		if(this.nodeType != Xml.Document && this.nodeType != Xml.Element) {
+			throw haxe_Exception.thrown("Bad node type, expected Element or Document but found " + (this.nodeType == null ? "null" : XmlType.toString(this.nodeType)));
+		}
+		if(HxOverrides.remove(this.children,x)) {
+			x.parent = null;
+			return true;
+		}
+		return false;
+	}
+	toString() {
+		return haxe_xml_Printer.print(this);
+	}
+	static parse(str) {
+		return haxe_xml_Parser.parse(str);
+	}
+	static createElement(name) {
+		let xml = new Xml(Xml.Element);
+		if(xml.nodeType != Xml.Element) {
+			throw haxe_Exception.thrown("Bad node type, expected Element but found " + (xml.nodeType == null ? "null" : XmlType.toString(xml.nodeType)));
+		}
+		xml.nodeName = name;
+		return xml;
+	}
+	static createPCData(data) {
+		let xml = new Xml(Xml.PCData);
+		if(xml.nodeType == Xml.Document || xml.nodeType == Xml.Element) {
+			throw haxe_Exception.thrown("Bad node type, unexpected " + (xml.nodeType == null ? "null" : XmlType.toString(xml.nodeType)));
+		}
+		xml.nodeValue = data;
+		return xml;
+	}
+	static createCData(data) {
+		let xml = new Xml(Xml.CData);
+		if(xml.nodeType == Xml.Document || xml.nodeType == Xml.Element) {
+			throw haxe_Exception.thrown("Bad node type, unexpected " + (xml.nodeType == null ? "null" : XmlType.toString(xml.nodeType)));
+		}
+		xml.nodeValue = data;
+		return xml;
+	}
+	static createComment(data) {
+		let xml = new Xml(Xml.Comment);
+		if(xml.nodeType == Xml.Document || xml.nodeType == Xml.Element) {
+			throw haxe_Exception.thrown("Bad node type, unexpected " + (xml.nodeType == null ? "null" : XmlType.toString(xml.nodeType)));
+		}
+		xml.nodeValue = data;
+		return xml;
+	}
+	static createDocType(data) {
+		let xml = new Xml(Xml.DocType);
+		if(xml.nodeType == Xml.Document || xml.nodeType == Xml.Element) {
+			throw haxe_Exception.thrown("Bad node type, unexpected " + (xml.nodeType == null ? "null" : XmlType.toString(xml.nodeType)));
+		}
+		xml.nodeValue = data;
+		return xml;
+	}
+	static createProcessingInstruction(data) {
+		let xml = new Xml(Xml.ProcessingInstruction);
+		if(xml.nodeType == Xml.Document || xml.nodeType == Xml.Element) {
+			throw haxe_Exception.thrown("Bad node type, unexpected " + (xml.nodeType == null ? "null" : XmlType.toString(xml.nodeType)));
+		}
+		xml.nodeValue = data;
+		return xml;
+	}
+	static createDocument() {
+		return new Xml(Xml.Document);
+	}
+}
+Xml.__name__ = "Xml";
+Object.assign(Xml.prototype, {
+	__class__: Xml
+});
 class bridge_Bridge {
 	constructor(serverPath) {
 		this.nextId = 1;
@@ -355,6 +564,9 @@ class bridge_Bridge {
 	}
 }
 bridge_Bridge.__name__ = "bridge.Bridge";
+Object.assign(bridge_Bridge.prototype, {
+	__class__: bridge_Bridge
+});
 class bridge_Log {
 	static info(message) {
 		process.stderr.write("[haxe-zed] " + message + "\n");
@@ -511,6 +723,9 @@ class bridge_State {
 	}
 }
 bridge_State.__name__ = "bridge.State";
+Object.assign(bridge_State.prototype, {
+	__class__: bridge_State
+});
 var bridge_lsp_DocContext = $hxEnums["bridge.lsp.DocContext"] = { __ename__:true,__constructs__:null
 	,Define: ($_=function(name) { return {_hx_index:0,name:name,__enum__:"bridge.lsp.DocContext",toString:$estr,__params__:function(){ return [this.name];}}; },$_._hx_name="Define",$_)
 	,Metadata: ($_=function(name) { return {_hx_index:1,name:name,__enum__:"bridge.lsp.DocContext",toString:$estr,__params__:function(){ return [this.name];}}; },$_._hx_name="Metadata",$_)
@@ -775,6 +990,9 @@ class bridge_lsp_CompilerDocs {
 	}
 }
 bridge_lsp_CompilerDocs.__name__ = "bridge.lsp.CompilerDocs";
+Object.assign(bridge_lsp_CompilerDocs.prototype, {
+	__class__: bridge_lsp_CompilerDocs
+});
 class bridge_lsp_Documents {
 	constructor() {
 		this.texts = new haxe_ds_StringMap();
@@ -865,6 +1083,9 @@ class bridge_lsp_Documents {
 	}
 }
 bridge_lsp_Documents.__name__ = "bridge.lsp.Documents";
+Object.assign(bridge_lsp_Documents.prototype, {
+	__class__: bridge_lsp_Documents
+});
 class bridge_lsp_HaxeItems {
 	static completionItem(item,range) {
 		let args = item.args;
@@ -1416,7 +1637,9 @@ class bridge_lsp_MarkupFeature {
 				if(code == null) {
 					return null;
 				} else {
-					return _gthis.compiler.display("display/definition",code.file,code.text,code.offset).then(bridge_lsp_HaxeItems.locations);
+					return _gthis.compiler.display("display/definition",code.file,code.text,code.offset).then(function(result) {
+						return bridge_lsp_MarkupFeature.realLocations(code,bridge_lsp_HaxeItems.locations(result));
+					});
 				}
 			});
 		case 4:
@@ -1490,7 +1713,11 @@ class bridge_lsp_MarkupFeature {
 				}
 				let method = "\n\tfunction haxeZedProbe() { " + declarations + "{ " + before;
 				let rest = "" + after + "; } }\n";
-				return bridge_lsp_MarkupFeature.insertIntoClass(host1,hostText,method,rest);
+				let edits = [];
+				if(bridge_lsp_Rewrites.uriToPath(at.uri) == host1.file && !bridge_lsp_MarkupFeature.parses(markup)) {
+					edits.push({ at : at.region.start, removed : at.region.end - at.region.start, text : bridge_lsp_MarkupFeature.rootOnly(markup)});
+				}
+				return bridge_lsp_MarkupFeature.insertIntoClass(host1,hostText,method,rest,edits);
 			});
 		});
 	}
@@ -1686,15 +1913,88 @@ class bridge_lsp_MarkupFeature {
 	static createProviders() {
 		return [new bridge_markup_HaxeUiProvider()];
 	}
-	static insertIntoClass(host,text,head,tail) {
-		let declaration = new EReg("\\bclass\\s+" + host.className + "\\b[^{]*\\{","");
-		if(!declaration.match(text)) {
-			let appended = text + ("\nprivate class HaxeZedProbe {" + head);
-			return { file : host.file, text : appended + tail + "}\n", offset : appended.length};
+	static parses(markup) {
+		try {
+			Xml.parse(markup);
+			return true;
+		} catch( _g ) {
+			if(true) {
+				return false;
+			} else {
+				throw _g;
+			}
 		}
-		let bodyStart = declaration.matchedPos().pos + declaration.matchedPos().len;
-		let before = HxOverrides.substr(text,0,bodyStart) + head;
-		return { file : host.file, text : before + tail + HxOverrides.substr(text,bodyStart,null), offset : before.length};
+	}
+	static rootOnly(markup) {
+		let tmp = bridge_markup_XmlCursor.elements(markup)[0];
+		let root = tmp != null ? tmp.name : null;
+		let root1 = root != null ? root : "box";
+		return "<" + root1 + " />";
+	}
+	static insertIntoClass(host,text,head,tail,edits) {
+		let declaration = new EReg("\\bclass\\s+" + host.className + "\\b[^{]*\\{","");
+		let found = declaration.match(text);
+		let at = found ? declaration.matchedPos().pos + declaration.matchedPos().len : text.length;
+		let opening = found ? head : "\nprivate class HaxeZedProbe {" + head;
+		let all = edits.concat([{ at : at, removed : 0, text : opening + tail + (found ? "" : "}\n")}]);
+		all.sort(function(a,b) {
+			return a.at - b.at;
+		});
+		let shift = 0;
+		let _g = 0;
+		while(_g < all.length) {
+			let edit = all[_g];
+			++_g;
+			if(edit.at < at) {
+				shift += edit.text.length - edit.removed;
+			}
+		}
+		return { file : host.file, text : bridge_lsp_MarkupFeature.applyEdits(text,all), offset : at + shift + opening.length, original : text, edits : all};
+	}
+	static applyEdits(text,edits) {
+		let result_b = "";
+		let last = 0;
+		let _g = 0;
+		while(_g < edits.length) {
+			let edit = edits[_g];
+			++_g;
+			result_b += Std.string(text.substring(last,edit.at));
+			result_b += Std.string(edit.text);
+			last = edit.at + edit.removed;
+		}
+		result_b += Std.string(HxOverrides.substr(text,last,null));
+		return result_b;
+	}
+	static toOriginal(edits,offset) {
+		let shift = 0;
+		let _g = 0;
+		while(_g < edits.length) {
+			let edit = edits[_g];
+			++_g;
+			let start = edit.at + shift;
+			if(offset < start) {
+				break;
+			}
+			if(offset < start + edit.text.length) {
+				return edit.at;
+			}
+			shift += edit.text.length - edit.removed;
+		}
+		return offset - shift;
+	}
+	static realLocations(code,locations) {
+		let uri = bridge_lsp_Rewrites.pathToUri(code.file);
+		let _g = 0;
+		while(_g < locations.length) {
+			let location = locations[_g];
+			++_g;
+			if(location.uri == uri) {
+				let start = bridge_lsp_MarkupFeature.toOriginal(code.edits,bridge_lsp_Documents.offsetAt(code.text,location.range.start));
+				let end = bridge_lsp_MarkupFeature.toOriginal(code.edits,bridge_lsp_Documents.offsetAt(code.text,location.range.end));
+				location.range = { start : bridge_lsp_Documents.positionAt(code.original,start), end : bridge_lsp_Documents.positionAt(code.original,end)};
+			}
+		}
+		return locations;
 	}
 	static markdown(heading,doc,note) {
 		let value = heading;
@@ -1760,6 +2060,9 @@ class bridge_lsp_MarkupFeature {
 	}
 }
 bridge_lsp_MarkupFeature.__name__ = "bridge.lsp.MarkupFeature";
+Object.assign(bridge_lsp_MarkupFeature.prototype, {
+	__class__: bridge_lsp_MarkupFeature
+});
 class bridge_lsp_Ranking {
 	static ofServerItem(item,context) {
 		let detail = item.detail;
@@ -2802,6 +3105,9 @@ class bridge_lsp_Rewrites {
 	}
 }
 bridge_lsp_Rewrites.__name__ = "bridge.lsp.Rewrites";
+Object.assign(bridge_lsp_Rewrites.prototype, {
+	__class__: bridge_lsp_Rewrites
+});
 class bridge_lsp_ServerCache {
 	constructor(bridge,documents) {
 		this.bridge = bridge;
@@ -2845,6 +3151,9 @@ class bridge_lsp_ServerCache {
 	}
 }
 bridge_lsp_ServerCache.__name__ = "bridge.lsp.ServerCache";
+Object.assign(bridge_lsp_ServerCache.prototype, {
+	__class__: bridge_lsp_ServerCache
+});
 class bridge_lsp_ServerCompiler {
 	constructor(bridge,readFile,cwd) {
 		this.queue = Promise.resolve(null);
@@ -2957,6 +3266,9 @@ class bridge_lsp_ServerCompiler {
 	}
 }
 bridge_lsp_ServerCompiler.__name__ = "bridge.lsp.ServerCompiler";
+Object.assign(bridge_lsp_ServerCompiler.prototype, {
+	__class__: bridge_lsp_ServerCompiler
+});
 class bridge_lsp_WorkspaceSymbols {
 	static handle(bridge,message) {
 		let filter = message.params.query;
@@ -3629,6 +3941,9 @@ class bridge_markup_HaxeUiProvider {
 	}
 }
 bridge_markup_HaxeUiProvider.__name__ = "bridge.markup.HaxeUiProvider";
+Object.assign(bridge_markup_HaxeUiProvider.prototype, {
+	__class__: bridge_markup_HaxeUiProvider
+});
 var bridge_markup_XmlPosition = $hxEnums["bridge.markup.XmlPosition"] = { __ename__:true,__constructs__:null
 	,TagName: ($_=function(name,start,end,parents) { return {_hx_index:0,name:name,start:start,end:end,parents:parents,__enum__:"bridge.markup.XmlPosition",toString:$estr,__params__:function(){ return [this.name,this.start,this.end,this.parents];}}; },$_._hx_name="TagName",$_)
 	,CloseTagName: ($_=function(name,start,end,open) { return {_hx_index:1,name:name,start:start,end:end,open:open,__enum__:"bridge.markup.XmlPosition",toString:$estr,__params__:function(){ return [this.name,this.start,this.end,this.open];}}; },$_._hx_name="CloseTagName",$_)
@@ -3943,6 +4258,9 @@ class bridge_project_CeramicProvider {
 	}
 }
 bridge_project_CeramicProvider.__name__ = "bridge.project.CeramicProvider";
+Object.assign(bridge_project_CeramicProvider.prototype, {
+	__class__: bridge_project_CeramicProvider
+});
 class bridge_project_CommandProvider {
 	constructor(definition) {
 		this.definition = definition;
@@ -4118,6 +4436,9 @@ class bridge_project_CommandProvider {
 	}
 }
 bridge_project_CommandProvider.__name__ = "bridge.project.CommandProvider";
+Object.assign(bridge_project_CommandProvider.prototype, {
+	__class__: bridge_project_CommandProvider
+});
 class bridge_project_DocPacks {
 	static macros(packs,args,projectRoot,builtInDir) {
 		let result = [];
@@ -4396,6 +4717,9 @@ class bridge_project_HxmlProvider {
 	}
 }
 bridge_project_HxmlProvider.__name__ = "bridge.project.HxmlProvider";
+Object.assign(bridge_project_HxmlProvider.prototype, {
+	__class__: bridge_project_HxmlProvider
+});
 class bridge_project_ProjectResolver {
 	static resolve(ctx,remembered) {
 		let settings = ctx.settings;
@@ -4630,6 +4954,9 @@ class bridge_rpc_Connection {
 	}
 }
 bridge_rpc_Connection.__name__ = "bridge.rpc.Connection";
+Object.assign(bridge_rpc_Connection.prototype, {
+	__class__: bridge_rpc_Connection
+});
 class bridge_toolchain_Haxerc {
 	static find(projectRoot,workspaceRoot) {
 		let stop = haxe_io_Path.normalize(workspaceRoot);
@@ -4670,6 +4997,9 @@ class bridge_toolchain_ProviderResolver {
 	}
 }
 bridge_toolchain_ProviderResolver.__name__ = "bridge.toolchain.ProviderResolver";
+Object.assign(bridge_toolchain_ProviderResolver.prototype, {
+	__class__: bridge_toolchain_ProviderResolver
+});
 class bridge_toolchain_LixResolver {
 	constructor() {
 		this.name = "lix";
@@ -4706,6 +5036,9 @@ class bridge_toolchain_LixResolver {
 	}
 }
 bridge_toolchain_LixResolver.__name__ = "bridge.toolchain.LixResolver";
+Object.assign(bridge_toolchain_LixResolver.prototype, {
+	__class__: bridge_toolchain_LixResolver
+});
 class bridge_toolchain_HaxeManagerResolver {
 	constructor() {
 		this.name = "haxe-manager";
@@ -4775,6 +5108,9 @@ class bridge_toolchain_HaxeManagerResolver {
 	}
 }
 bridge_toolchain_HaxeManagerResolver.__name__ = "bridge.toolchain.HaxeManagerResolver";
+Object.assign(bridge_toolchain_HaxeManagerResolver.prototype, {
+	__class__: bridge_toolchain_HaxeManagerResolver
+});
 class bridge_toolchain_PathResolver {
 	constructor() {
 		this.name = "path";
@@ -4789,6 +5125,9 @@ class bridge_toolchain_PathResolver {
 	}
 }
 bridge_toolchain_PathResolver.__name__ = "bridge.toolchain.PathResolver";
+Object.assign(bridge_toolchain_PathResolver.prototype, {
+	__class__: bridge_toolchain_PathResolver
+});
 class bridge_toolchain_CommandResolver {
 	constructor(definition) {
 		this.definition = definition;
@@ -4818,6 +5157,9 @@ class bridge_toolchain_CommandResolver {
 	}
 }
 bridge_toolchain_CommandResolver.__name__ = "bridge.toolchain.CommandResolver";
+Object.assign(bridge_toolchain_CommandResolver.prototype, {
+	__class__: bridge_toolchain_CommandResolver
+});
 class bridge_toolchain_Toolchain {
 	static builtInResolvers() {
 		return [new bridge_toolchain_ProviderResolver(),new bridge_toolchain_LixResolver(),new bridge_toolchain_HaxeManagerResolver(),new bridge_toolchain_PathResolver()];
@@ -4997,6 +5339,9 @@ class bridge_util_NotFound {
 	}
 }
 bridge_util_NotFound.__name__ = "bridge.util.NotFound";
+Object.assign(bridge_util_NotFound.prototype, {
+	__class__: bridge_util_NotFound
+});
 class bridge_util_Files {
 	static findByName(root,names,maxDepth) {
 		let _this = bridge_util_Files.find(root,maxDepth,function(file) {
@@ -5253,6 +5598,9 @@ class haxe_Exception extends Error {
 	}
 }
 haxe_Exception.__name__ = "haxe.Exception";
+Object.assign(haxe_Exception.prototype, {
+	__class__: haxe_Exception
+});
 class haxe_Log {
 	static formatOutput(v,infos) {
 		let str = Std.string(v);
@@ -5335,6 +5683,9 @@ class haxe_Timer {
 	}
 }
 haxe_Timer.__name__ = "haxe.Timer";
+Object.assign(haxe_Timer.prototype, {
+	__class__: haxe_Timer
+});
 class haxe_ValueException extends haxe_Exception {
 	constructor(value,previous,native) {
 		super(String(value),previous,native);
@@ -5345,6 +5696,9 @@ class haxe_ValueException extends haxe_Exception {
 	}
 }
 haxe_ValueException.__name__ = "haxe.ValueException";
+Object.assign(haxe_ValueException.prototype, {
+	__class__: haxe_ValueException
+});
 class haxe_io_Bytes {
 	constructor(data) {
 		this.length = data.byteLength;
@@ -5393,6 +5747,9 @@ class haxe_io_Bytes {
 	}
 }
 haxe_io_Bytes.__name__ = "haxe.io.Bytes";
+Object.assign(haxe_io_Bytes.prototype, {
+	__class__: haxe_io_Bytes
+});
 var haxe_io_Encoding = $hxEnums["haxe.io.Encoding"] = { __ename__:true,__constructs__:null
 	,UTF8: {_hx_name:"UTF8",_hx_index:0,__enum__:"haxe.io.Encoding",toString:$estr}
 	,RawNative: {_hx_name:"RawNative",_hx_index:1,__enum__:"haxe.io.Encoding",toString:$estr}
@@ -5466,6 +5823,9 @@ class haxe_crypto_BaseCode {
 	}
 }
 haxe_crypto_BaseCode.__name__ = "haxe.crypto.BaseCode";
+Object.assign(haxe_crypto_BaseCode.prototype, {
+	__class__: haxe_crypto_BaseCode
+});
 class haxe_ds_ArraySort {
 	static sort(a,cmp) {
 		haxe_ds_ArraySort.rec(a,cmp,0,a.length);
@@ -5601,6 +5961,9 @@ class haxe_ds_StringMap {
 	}
 }
 haxe_ds_StringMap.__name__ = "haxe.ds.StringMap";
+Object.assign(haxe_ds_StringMap.prototype, {
+	__class__: haxe_ds_StringMap
+});
 class haxe_exceptions_PosException extends haxe_Exception {
 	constructor(message,previous,pos) {
 		super(message,previous);
@@ -5615,6 +5978,9 @@ class haxe_exceptions_PosException extends haxe_Exception {
 	}
 }
 haxe_exceptions_PosException.__name__ = "haxe.exceptions.PosException";
+Object.assign(haxe_exceptions_PosException.prototype, {
+	__class__: haxe_exceptions_PosException
+});
 class haxe_exceptions_NotImplementedException extends haxe_exceptions_PosException {
 	constructor(message,previous,pos) {
 		if(message == null) {
@@ -5624,6 +5990,9 @@ class haxe_exceptions_NotImplementedException extends haxe_exceptions_PosExcepti
 	}
 }
 haxe_exceptions_NotImplementedException.__name__ = "haxe.exceptions.NotImplementedException";
+Object.assign(haxe_exceptions_NotImplementedException.prototype, {
+	__class__: haxe_exceptions_NotImplementedException
+});
 var haxe_io_Error = $hxEnums["haxe.io.Error"] = { __ename__:true,__constructs__:null
 	,Blocked: {_hx_name:"Blocked",_hx_index:0,__enum__:"haxe.io.Error",toString:$estr}
 	,Overflow: {_hx_name:"Overflow",_hx_index:1,__enum__:"haxe.io.Error",toString:$estr}
@@ -5661,6 +6030,9 @@ class haxe_io_Output {
 	}
 }
 haxe_io_Output.__name__ = "haxe.io.Output";
+Object.assign(haxe_io_Output.prototype, {
+	__class__: haxe_io_Output
+});
 class haxe_io_Path {
 	constructor(path) {
 		switch(path) {
@@ -5854,6 +6226,9 @@ class haxe_io_Path {
 	}
 }
 haxe_io_Path.__name__ = "haxe.io.Path";
+Object.assign(haxe_io_Path.prototype, {
+	__class__: haxe_io_Path
+});
 class haxe_iterators_ArrayIterator {
 	constructor(array) {
 		this.current = 0;
@@ -5867,7 +6242,568 @@ class haxe_iterators_ArrayIterator {
 	}
 }
 haxe_iterators_ArrayIterator.__name__ = "haxe.iterators.ArrayIterator";
+Object.assign(haxe_iterators_ArrayIterator.prototype, {
+	__class__: haxe_iterators_ArrayIterator
+});
+class haxe_xml_XmlParserException {
+	constructor(message,xml,position) {
+		this.xml = xml;
+		this.message = message;
+		this.position = position;
+		this.lineNumber = 1;
+		this.positionAtLine = 0;
+		let _g = 0;
+		let _g1 = position;
+		while(_g < _g1) {
+			let i = _g++;
+			let c = xml.charCodeAt(i);
+			if(c == 10) {
+				this.lineNumber++;
+				this.positionAtLine = 0;
+			} else if(c != 13) {
+				this.positionAtLine++;
+			}
+		}
+	}
+	toString() {
+		let c = js_Boot.getClass(this);
+		return c.__name__ + ": " + this.message + " at line " + this.lineNumber + " char " + this.positionAtLine;
+	}
+}
+haxe_xml_XmlParserException.__name__ = "haxe.xml.XmlParserException";
+Object.assign(haxe_xml_XmlParserException.prototype, {
+	__class__: haxe_xml_XmlParserException
+});
+class haxe_xml_Parser {
+	static parse(str,strict) {
+		if(strict == null) {
+			strict = false;
+		}
+		let doc = Xml.createDocument();
+		haxe_xml_Parser.doParse(str,strict,0,doc);
+		return doc;
+	}
+	static doParse(str,strict,p,parent) {
+		if(p == null) {
+			p = 0;
+		}
+		let xml = null;
+		let state = 1;
+		let next = 1;
+		let aname = null;
+		let start = 0;
+		let nsubs = 0;
+		let nbrackets = 0;
+		let buf = new StringBuf();
+		let escapeNext = 1;
+		let attrValQuote = -1;
+		while(p < str.length) {
+			let c = str.charCodeAt(p);
+			switch(state) {
+			case 0:
+				switch(c) {
+				case 9:case 10:case 13:case 32:
+					break;
+				default:
+					state = next;
+					continue;
+				}
+				break;
+			case 1:
+				if(c == 60) {
+					state = 0;
+					next = 2;
+				} else {
+					start = p;
+					state = 13;
+					continue;
+				}
+				break;
+			case 2:
+				switch(c) {
+				case 33:
+					if(str.charCodeAt((p + 1)) == 91) {
+						p += 2;
+						if(HxOverrides.substr(str,p,6).toUpperCase() != "CDATA[") {
+							throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Expected <![CDATA[",str,p));
+						}
+						p += 5;
+						state = 17;
+						start = p + 1;
+					} else if(str.charCodeAt((p + 1)) == 68 || str.charCodeAt((p + 1)) == 100) {
+						if(HxOverrides.substr(str,p + 2,6).toUpperCase() != "OCTYPE") {
+							throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Expected <!DOCTYPE",str,p));
+						}
+						p += 8;
+						state = 16;
+						start = p + 1;
+					} else if(str.charCodeAt((p + 1)) != 45 || str.charCodeAt((p + 2)) != 45) {
+						throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Expected <!--",str,p));
+					} else {
+						p += 2;
+						state = 15;
+						start = p + 1;
+					}
+					break;
+				case 47:
+					if(parent == null) {
+						throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Expected node name",str,p));
+					}
+					start = p + 1;
+					state = 0;
+					next = 10;
+					break;
+				case 63:
+					state = 14;
+					start = p;
+					break;
+				default:
+					state = 3;
+					start = p;
+					continue;
+				}
+				break;
+			case 3:
+				if(!(c >= 97 && c <= 122 || c >= 65 && c <= 90 || c >= 48 && c <= 57 || c == 58 || c == 46 || c == 95 || c == 45)) {
+					if(p == start) {
+						throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Expected node name",str,p));
+					}
+					xml = Xml.createElement(HxOverrides.substr(str,start,p - start));
+					parent.addChild(xml);
+					++nsubs;
+					state = 0;
+					next = 4;
+					continue;
+				}
+				break;
+			case 4:
+				switch(c) {
+				case 47:
+					state = 11;
+					break;
+				case 62:
+					state = 9;
+					break;
+				default:
+					state = 5;
+					start = p;
+					continue;
+				}
+				break;
+			case 5:
+				if(!(c >= 97 && c <= 122 || c >= 65 && c <= 90 || c >= 48 && c <= 57 || c == 58 || c == 46 || c == 95 || c == 45)) {
+					if(start == p) {
+						throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Expected attribute name",str,p));
+					}
+					let tmp = HxOverrides.substr(str,start,p - start);
+					aname = tmp;
+					if(xml.exists(aname)) {
+						throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Duplicate attribute [" + aname + "]",str,p));
+					}
+					state = 0;
+					next = 6;
+					continue;
+				}
+				break;
+			case 6:
+				if(c == 61) {
+					state = 0;
+					next = 7;
+				} else {
+					throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Expected =",str,p));
+				}
+				break;
+			case 7:
+				switch(c) {
+				case 34:case 39:
+					buf = new StringBuf();
+					state = 8;
+					start = p + 1;
+					attrValQuote = c;
+					break;
+				default:
+					throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Expected \"",str,p));
+				}
+				break;
+			case 8:
+				switch(c) {
+				case 38:
+					let len = p - start;
+					buf.b += len == null ? HxOverrides.substr(str,start,null) : HxOverrides.substr(str,start,len);
+					state = 18;
+					escapeNext = 8;
+					start = p + 1;
+					break;
+				case 60:case 62:
+					if(strict) {
+						throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Invalid unescaped " + String.fromCodePoint(c) + " in attribute value",str,p));
+					} else if(c == attrValQuote) {
+						let len = p - start;
+						buf.b += len == null ? HxOverrides.substr(str,start,null) : HxOverrides.substr(str,start,len);
+						let val = buf.b;
+						buf = new StringBuf();
+						xml.set(aname,val);
+						state = 0;
+						next = 4;
+					}
+					break;
+				default:
+					if(c == attrValQuote) {
+						let len = p - start;
+						buf.b += len == null ? HxOverrides.substr(str,start,null) : HxOverrides.substr(str,start,len);
+						let val = buf.b;
+						buf = new StringBuf();
+						xml.set(aname,val);
+						state = 0;
+						next = 4;
+					}
+				}
+				break;
+			case 9:
+				p = haxe_xml_Parser.doParse(str,strict,p,xml);
+				start = p;
+				state = 1;
+				break;
+			case 10:
+				if(!(c >= 97 && c <= 122 || c >= 65 && c <= 90 || c >= 48 && c <= 57 || c == 58 || c == 46 || c == 95 || c == 45)) {
+					if(start == p) {
+						throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Expected node name",str,p));
+					}
+					let v = HxOverrides.substr(str,start,p - start);
+					if(parent == null || parent.nodeType != 0) {
+						throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Unexpected </" + v + ">, tag is not open",str,p));
+					}
+					if(parent.nodeType != Xml.Element) {
+						throw haxe_Exception.thrown("Bad node type, expected Element but found " + (parent.nodeType == null ? "null" : XmlType.toString(parent.nodeType)));
+					}
+					if(v != parent.nodeName) {
+						if(parent.nodeType != Xml.Element) {
+							throw haxe_Exception.thrown("Bad node type, expected Element but found " + (parent.nodeType == null ? "null" : XmlType.toString(parent.nodeType)));
+						}
+						throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Expected </" + parent.nodeName + ">",str,p));
+					}
+					state = 0;
+					next = 12;
+					continue;
+				}
+				break;
+			case 11:
+				if(c == 62) {
+					state = 1;
+				} else {
+					throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Expected >",str,p));
+				}
+				break;
+			case 12:
+				if(c == 62) {
+					if(nsubs == 0) {
+						parent.addChild(Xml.createPCData(""));
+					}
+					return p;
+				} else {
+					throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Expected >",str,p));
+				}
+				break;
+			case 13:
+				if(c == 60) {
+					let len = p - start;
+					buf.b += len == null ? HxOverrides.substr(str,start,null) : HxOverrides.substr(str,start,len);
+					let child = Xml.createPCData(buf.b);
+					buf = new StringBuf();
+					parent.addChild(child);
+					++nsubs;
+					state = 0;
+					next = 2;
+				} else if(c == 38) {
+					let len = p - start;
+					buf.b += len == null ? HxOverrides.substr(str,start,null) : HxOverrides.substr(str,start,len);
+					state = 18;
+					escapeNext = 13;
+					start = p + 1;
+				}
+				break;
+			case 14:
+				if(c == 63 && str.charCodeAt((p + 1)) == 62) {
+					++p;
+					let str1 = HxOverrides.substr(str,start + 1,p - start - 2);
+					parent.addChild(Xml.createProcessingInstruction(str1));
+					++nsubs;
+					state = 1;
+				}
+				break;
+			case 15:
+				if(c == 45 && str.charCodeAt((p + 1)) == 45 && str.charCodeAt((p + 2)) == 62) {
+					parent.addChild(Xml.createComment(HxOverrides.substr(str,start,p - start)));
+					++nsubs;
+					p += 2;
+					state = 1;
+				}
+				break;
+			case 16:
+				if(c == 91) {
+					++nbrackets;
+				} else if(c == 93) {
+					--nbrackets;
+				} else if(c == 62 && nbrackets == 0) {
+					parent.addChild(Xml.createDocType(HxOverrides.substr(str,start,p - start)));
+					++nsubs;
+					state = 1;
+				}
+				break;
+			case 17:
+				if(c == 93 && str.charCodeAt((p + 1)) == 93 && str.charCodeAt((p + 2)) == 62) {
+					let child = Xml.createCData(HxOverrides.substr(str,start,p - start));
+					parent.addChild(child);
+					++nsubs;
+					p += 2;
+					state = 1;
+				}
+				break;
+			case 18:
+				if(c == 59) {
+					let s = HxOverrides.substr(str,start,p - start).toLowerCase();
+					if(s.charCodeAt(0) == 35) {
+						let c = s.charCodeAt(1) == 120 ? Std.parseInt("0" + HxOverrides.substr(s,1,s.length - 1)) : Std.parseInt(HxOverrides.substr(s,1,s.length - 1));
+						buf.b += String.fromCodePoint(c);
+					} else if(!haxe_xml_Parser.escapes.m.has(s)) {
+						if(strict) {
+							throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Undefined entity: " + s,str,p));
+						}
+						buf.b += Std.string("&" + s + ";");
+					} else {
+						buf.b += Std.string(haxe_xml_Parser.escapes.m.get(s));
+					}
+					start = p + 1;
+					state = escapeNext;
+				} else if(!(c >= 97 && c <= 122 || c >= 65 && c <= 90 || c >= 48 && c <= 57 || c == 58 || c == 46 || c == 95 || c == 45) && c != 35) {
+					if(strict) {
+						throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Invalid character in entity: " + String.fromCodePoint(c),str,p));
+					}
+					buf.b += String.fromCodePoint(38);
+					let len = p - start;
+					buf.b += len == null ? HxOverrides.substr(str,start,null) : HxOverrides.substr(str,start,len);
+					--p;
+					start = p + 1;
+					state = escapeNext;
+				}
+				break;
+			}
+			++p;
+		}
+		if(state == 1) {
+			start = p;
+			state = 13;
+		}
+		if(state == 13) {
+			if(parent.nodeType == 0) {
+				if(parent.nodeType != Xml.Element) {
+					throw haxe_Exception.thrown("Bad node type, expected Element but found " + (parent.nodeType == null ? "null" : XmlType.toString(parent.nodeType)));
+				}
+				throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Unclosed node <" + parent.nodeName + ">",str,p));
+			}
+			if(p != start) {
+				let len = p - start;
+				buf.b += len == null ? HxOverrides.substr(str,start,null) : HxOverrides.substr(str,start,len);
+			}
+			let str1 = buf.b;
+			if(str1.length > 0 || nsubs == 0) {
+				parent.addChild(Xml.createPCData(buf.b));
+				++nsubs;
+			}
+			return p;
+		}
+		if(!strict && state == 18 && escapeNext == 13) {
+			buf.b += String.fromCodePoint(38);
+			let len = p - start;
+			buf.b += len == null ? HxOverrides.substr(str,start,null) : HxOverrides.substr(str,start,len);
+			parent.addChild(Xml.createPCData(buf.b));
+			++nsubs;
+			return p;
+		}
+		throw haxe_Exception.thrown(new haxe_xml_XmlParserException("Unexpected end",str,p));
+	}
+}
+haxe_xml_Parser.__name__ = "haxe.xml.Parser";
+class haxe_xml_Printer {
+	constructor(pretty) {
+		this.output = new StringBuf();
+		this.pretty = pretty;
+	}
+	writeNode(value,tabs) {
+		switch(value.nodeType) {
+		case 0:
+			this.output.b += Std.string(tabs + "<");
+			if(value.nodeType != Xml.Element) {
+				throw haxe_Exception.thrown("Bad node type, expected Element but found " + (value.nodeType == null ? "null" : XmlType.toString(value.nodeType)));
+			}
+			this.output.b += Std.string(value.nodeName);
+			let _gattribute = value.attributes();
+			while(_gattribute.hasNext()) {
+				let attribute = _gattribute.next();
+				this.output.b += Std.string(" " + attribute + "=\"");
+				let input = StringTools.htmlEscape(value.get(attribute),true);
+				this.output.b += Std.string(input);
+				this.output.b += "\"";
+			}
+			if(this.hasChildren(value)) {
+				this.output.b += ">";
+				if(this.pretty) {
+					this.output.b += "\n";
+				}
+				if(value.nodeType != Xml.Document && value.nodeType != Xml.Element) {
+					throw haxe_Exception.thrown("Bad node type, expected Element or Document but found " + (value.nodeType == null ? "null" : XmlType.toString(value.nodeType)));
+				}
+				let _g_current = 0;
+				let _g_array = value.children;
+				while(_g_current < _g_array.length) {
+					let child = _g_array[_g_current++];
+					this.writeNode(child,this.pretty ? tabs + "\t" : tabs);
+				}
+				this.output.b += Std.string(tabs + "</");
+				if(value.nodeType != Xml.Element) {
+					throw haxe_Exception.thrown("Bad node type, expected Element but found " + (value.nodeType == null ? "null" : XmlType.toString(value.nodeType)));
+				}
+				this.output.b += Std.string(value.nodeName);
+				this.output.b += ">";
+				if(this.pretty) {
+					this.output.b += "\n";
+				}
+			} else {
+				this.output.b += "/>";
+				if(this.pretty) {
+					this.output.b += "\n";
+				}
+			}
+			break;
+		case 1:
+			if(value.nodeType == Xml.Document || value.nodeType == Xml.Element) {
+				throw haxe_Exception.thrown("Bad node type, unexpected " + (value.nodeType == null ? "null" : XmlType.toString(value.nodeType)));
+			}
+			let nodeValue = value.nodeValue;
+			if(nodeValue.length != 0) {
+				let input = tabs + StringTools.htmlEscape(nodeValue);
+				this.output.b += Std.string(input);
+				if(this.pretty) {
+					this.output.b += "\n";
+				}
+			}
+			break;
+		case 2:
+			this.output.b += Std.string(tabs + "<![CDATA[");
+			if(value.nodeType == Xml.Document || value.nodeType == Xml.Element) {
+				throw haxe_Exception.thrown("Bad node type, unexpected " + (value.nodeType == null ? "null" : XmlType.toString(value.nodeType)));
+			}
+			this.output.b += Std.string(value.nodeValue);
+			this.output.b += "]]>";
+			if(this.pretty) {
+				this.output.b += "\n";
+			}
+			break;
+		case 3:
+			if(value.nodeType == Xml.Document || value.nodeType == Xml.Element) {
+				throw haxe_Exception.thrown("Bad node type, unexpected " + (value.nodeType == null ? "null" : XmlType.toString(value.nodeType)));
+			}
+			let commentContent = value.nodeValue;
+			let _this_r = new RegExp("[\n\r\t]+","g".split("u").join(""));
+			commentContent = js_lib_NativeStringTools.replace(commentContent,_this_r,"");
+			commentContent = "<!--" + commentContent + "-->";
+			this.output.b += tabs == null ? "null" : "" + tabs;
+			let input = StringTools.trim(commentContent);
+			this.output.b += Std.string(input);
+			if(this.pretty) {
+				this.output.b += "\n";
+			}
+			break;
+		case 4:
+			if(value.nodeType == Xml.Document || value.nodeType == Xml.Element) {
+				throw haxe_Exception.thrown("Bad node type, unexpected " + (value.nodeType == null ? "null" : XmlType.toString(value.nodeType)));
+			}
+			this.output.b += Std.string("<!DOCTYPE " + value.nodeValue + ">");
+			if(this.pretty) {
+				this.output.b += "\n";
+			}
+			break;
+		case 5:
+			if(value.nodeType == Xml.Document || value.nodeType == Xml.Element) {
+				throw haxe_Exception.thrown("Bad node type, unexpected " + (value.nodeType == null ? "null" : XmlType.toString(value.nodeType)));
+			}
+			this.output.b += Std.string("<?" + value.nodeValue + "?>");
+			if(this.pretty) {
+				this.output.b += "\n";
+			}
+			break;
+		case 6:
+			if(value.nodeType != Xml.Document && value.nodeType != Xml.Element) {
+				throw haxe_Exception.thrown("Bad node type, expected Element or Document but found " + (value.nodeType == null ? "null" : XmlType.toString(value.nodeType)));
+			}
+			let _g_current = 0;
+			let _g_array = value.children;
+			while(_g_current < _g_array.length) {
+				let child = _g_array[_g_current++];
+				this.writeNode(child,tabs);
+			}
+			break;
+		}
+	}
+	hasChildren(value) {
+		if(value.nodeType != Xml.Document && value.nodeType != Xml.Element) {
+			throw haxe_Exception.thrown("Bad node type, expected Element or Document but found " + (value.nodeType == null ? "null" : XmlType.toString(value.nodeType)));
+		}
+		let _g_current = 0;
+		let _g_array = value.children;
+		while(_g_current < _g_array.length) {
+			let child = _g_array[_g_current++];
+			switch(child.nodeType) {
+			case 0:case 1:
+				return true;
+			case 2:case 3:
+				if(child.nodeType == Xml.Document || child.nodeType == Xml.Element) {
+					throw haxe_Exception.thrown("Bad node type, unexpected " + (child.nodeType == null ? "null" : XmlType.toString(child.nodeType)));
+				}
+				let s = child.nodeValue;
+				let l = s.length;
+				let r = 0;
+				while(r < l && StringTools.isSpace(s,r)) ++r;
+				if((r > 0 ? HxOverrides.substr(s,r,l - r) : s).length != 0) {
+					return true;
+				}
+				break;
+			default:
+			}
+		}
+		return false;
+	}
+	static print(xml,pretty) {
+		if(pretty == null) {
+			pretty = false;
+		}
+		let printer = new haxe_xml_Printer(pretty);
+		printer.writeNode(xml,"");
+		return printer.output.b;
+	}
+}
+haxe_xml_Printer.__name__ = "haxe.xml.Printer";
+Object.assign(haxe_xml_Printer.prototype, {
+	__class__: haxe_xml_Printer
+});
 class js_Boot {
+	static getClass(o) {
+		if(o == null) {
+			return null;
+		} else if(((o) instanceof Array)) {
+			return Array;
+		} else {
+			let cl = o.__class__;
+			if(cl != null) {
+				return cl;
+			}
+			let name = js_Boot.__nativeClassName(o);
+			if(name != null) {
+				return js_Boot.__resolveNativeClass(name);
+			}
+			return null;
+		}
+	}
 	static __string_rec(o,s) {
 		if(o == null) {
 			return "null";
@@ -5958,8 +6894,36 @@ class js_Boot {
 			return String(o);
 		}
 	}
+	static __nativeClassName(o) {
+		let name = js_Boot.__toStr.call(o).slice(8,-1);
+		if(name == "Object" || name == "Function" || name == "Math" || name == "JSON") {
+			return null;
+		}
+		return name;
+	}
+	static __resolveNativeClass(name) {
+		return $global[name];
+	}
 }
 js_Boot.__name__ = "js.Boot";
+class js_lib_HaxeIterator {
+	constructor(jsIterator) {
+		this.jsIterator = jsIterator;
+		this.lastStep = jsIterator.next();
+	}
+	hasNext() {
+		return !this.lastStep.done;
+	}
+	next() {
+		let v = this.lastStep.value;
+		this.lastStep = this.jsIterator.next();
+		return v;
+	}
+}
+js_lib_HaxeIterator.__name__ = "js.lib.HaxeIterator";
+Object.assign(js_lib_HaxeIterator.prototype, {
+	__class__: js_lib_HaxeIterator
+});
 class js_lib_NativeStringTools {
 	static replace(string,pattern,replacement) {
 		return string.replace(pattern, replacement);
@@ -6035,6 +6999,9 @@ class sys_io_FileOutput extends haxe_io_Output {
 	}
 }
 sys_io_FileOutput.__name__ = "sys.io.FileOutput";
+Object.assign(sys_io_FileOutput.prototype, {
+	__class__: sys_io_FileOutput
+});
 function $getIterator(o) { if( o instanceof Array ) return new haxe_iterators_ArrayIterator(o); else return o.iterator(); }
 function $bind(o,m) { if( m == null ) return null; if( m.__id__ == null ) m.__id__ = $global.$haxeUID++; var f; if( o.hx__closures__ == null ) o.hx__closures__ = {}; else f = o.hx__closures__[m.__id__]; if( f == null ) { f = m.bind(o); o.hx__closures__[m.__id__] = f; } return f; }
 $global.$haxeUID |= 0;
@@ -6042,12 +7009,21 @@ if(typeof(performance) != "undefined" ? typeof(performance.now) == "function" : 
 	HxOverrides.now = performance.now.bind(performance);
 }
 {
+	Object.defineProperty(String.prototype,"__class__",{ value : String, enumerable : false, writable : true});
 	String.__name__ = "String";
 	Array.__name__ = "Array";
+	Date.prototype.__class__ = Date;
 	Date.__name__ = "Date";
 }
 haxe_Resource.content = [{ name : "docs/openfl.meta.json", data : "WwoJeyJtZXRhZGF0YSI6ICI6Yml0bWFwIiwgImRvYyI6ICJFbWJlZHMgYW4gaW1hZ2UgaW50byBhIGNsYXNzIGV4dGVuZGluZyBvcGVuZmwuZGlzcGxheS5CaXRtYXBEYXRhLiBUaGUgcGF0aCBpcyByZWxhdGl2ZSB0byB0aGUgd29ya2luZyBkaXJlY3Rvcnkgb3IgYSBjbGFzcyBwYXRoLiIsICJwYXJhbXMiOiBbInBhdGgiXSwgInRhcmdldHMiOiBbIlRDbGFzcyJdfSwKCXsibWV0YWRhdGEiOiAiOnNvdW5kIiwgImRvYyI6ICJFbWJlZHMgYSBzb3VuZCBpbnRvIGEgY2xhc3MgZXh0ZW5kaW5nIG9wZW5mbC5tZWRpYS5Tb3VuZC4gVGhlIHBhdGggaXMgcmVsYXRpdmUgdG8gdGhlIHdvcmtpbmcgZGlyZWN0b3J5IG9yIGEgY2xhc3MgcGF0aC4iLCAicGFyYW1zIjogWyJwYXRoIl0sICJ0YXJnZXRzIjogWyJUQ2xhc3MiXX0KXQo"},{ name : "docs/lime.meta.json", data : "WwoJeyJtZXRhZGF0YSI6ICI6ZmlsZSIsICJkb2MiOiAiRW1iZWRzIGEgZmlsZSdzIGJ5dGVzIGludG8gYSBjbGFzcyBleHRlbmRpbmcgaGF4ZS5pby5CeXRlcyBvciBvcGVuZmwudXRpbHMuQnl0ZUFycmF5LiBUaGUgcGF0aCBpcyByZWxhdGl2ZSB0byB0aGUgd29ya2luZyBkaXJlY3Rvcnkgb3IgYSBjbGFzcyBwYXRoLiIsICJwYXJhbXMiOiBbInBhdGgiXSwgInRhcmdldHMiOiBbIlRDbGFzcyJdfSwKCXsibWV0YWRhdGEiOiAiOmltYWdlIiwgImRvYyI6ICJFbWJlZHMgYW4gaW1hZ2UgaW50byBhIGNsYXNzIGV4dGVuZGluZyBsaW1lLmdyYXBoaWNzLkltYWdlLiBUaGUgcGF0aCBpcyByZWxhdGl2ZSB0byB0aGUgd29ya2luZyBkaXJlY3Rvcnkgb3IgYSBjbGFzcyBwYXRoLiIsICJwYXJhbXMiOiBbInBhdGgiXSwgInRhcmdldHMiOiBbIlRDbGFzcyJdfSwKCXsibWV0YWRhdGEiOiAiOmZvbnQiLCAiZG9jIjogIkVtYmVkcyBhIGZvbnQgaW50byBhIGNsYXNzIGV4dGVuZGluZyBsaW1lLnRleHQuRm9udCAob3Igb3BlbmZsLnRleHQuRm9udCkuIFRoZSBwYXRoIGlzIHJlbGF0aXZlIHRvIHRoZSB3b3JraW5nIGRpcmVjdG9yeSBvciBhIGNsYXNzIHBhdGguIiwgInBhcmFtcyI6IFsicGF0aCJdLCAidGFyZ2V0cyI6IFsiVENsYXNzIl19Cl0K"},{ name : "providers/lime.json", data : "ewoJIm5hbWUiOiAibGltZSIsCgkicHJpb3JpdHkiOiAxMDAsCgkiZGV0ZWN0IjogWwoJCSJwcm9qZWN0LnhtbCIsCgkJIlByb2plY3QueG1sIiwKCQkicHJvamVjdC5oeHAiLAoJCSJwcm9qZWN0LmxpbWUiCgldLAoJInRhcmdldHMiOiBbCgkJImh0bWw1IiwKCQkiaGwiLAoJCSJuZWtvIiwKCQkibGludXgiLAoJCSJ3aW5kb3dzIiwKCQkibWFjIiwKCQkiYW5kcm9pZCIsCgkJImlvcyIsCgkJImFpciIsCgkJImZsYXNoIiwKCQkiZWxlY3Ryb24iCgldLAoJImJ1aWxkVHlwZXMiOiB7CgkJImRlYnVnIjogWwoJCQkiLWRlYnVnIgoJCV0sCgkJImZpbmFsIjogWwoJCQkiLWZpbmFsIgoJCV0KCX0sCgkiYXJncyI6IHsKCQkiY29tbWFuZCI6IFsKCQkJWwoJCQkJImxpbWUiLAoJCQkJImRpc3BsYXkiLAoJCQkJIiR7cHJvamVjdEZpbGV9IiwKCQkJCSIke3RhcmdldH0iLAoJCQkJIiR7YnVpbGRUeXBlQXJnc30iLAoJCQkJIi1ub2NvbG9yIiwKCQkJCSItRGRpc2FibGUtdmVyc2lvbi1jaGVjayIKCQkJXSwKCQkJWwoJCQkJImhheGVsaWIiLAoJCQkJInJ1biIsCgkJCQkibGltZSIsCgkJCQkiZGlzcGxheSIsCgkJCQkiJHtwcm9qZWN0RmlsZX0iLAoJCQkJIiR7dGFyZ2V0fSIsCgkJCQkiJHtidWlsZFR5cGVBcmdzfSIsCgkJCQkiLW5vY29sb3IiLAoJCQkJIi1EZGlzYWJsZS12ZXJzaW9uLWNoZWNrIgoJCQldCgkJXSwKCQkiY3dkIjogIiR7cHJvamVjdERpcn0iLAoJCSJvdXRwdXQiOiAiaHhtbCIKCX0sCgkiZG9jcyI6IFsKCQl7CgkJCSJsaWIiOiAibGltZSIsCgkJCSJtZXRhZGF0YSI6ICJidWlsdGluOmxpbWUubWV0YS5qc29uIgoJCX0sCgkJewoJCQkibGliIjogIm9wZW5mbCIsCgkJCSJtZXRhZGF0YSI6ICJidWlsdGluOm9wZW5mbC5tZXRhLmpzb24iCgkJfSwKCQl7CgkJCSJsaWIiOiAiZmxpeGVsIiwKCQkJImRlZmluZXMiOiAiYnVpbHRpbjpmbGl4ZWwuZGVmaW5lcy5qc29uIgoJCX0KCV0sCgkidGFza3MiOiBbCgkJewoJCQkibGFiZWwiOiAibGltZTogdGVzdCAke3RhcmdldH0iLAoJCQkiY29tbWFuZCI6IFsKCQkJCSJoYXhlbGliIiwKCQkJCSJydW4iLAoJCQkJImxpbWUiLAoJCQkJInRlc3QiLAoJCQkJIiR7cHJvamVjdEZpbGV9IiwKCQkJCSIke3RhcmdldH0iLAoJCQkJIiR7YnVpbGRUeXBlQXJnc30iCgkJCV0KCQl9LAoJCXsKCQkJImxhYmVsIjogImxpbWU6IGJ1aWxkICR7dGFyZ2V0fSIsCgkJCSJjb21tYW5kIjogWwoJCQkJImhheGVsaWIiLAoJCQkJInJ1biIsCgkJCQkibGltZSIsCgkJCQkiYnVpbGQiLAoJCQkJIiR7cHJvamVjdEZpbGV9IiwKCQkJCSIke3RhcmdldH0iLAoJCQkJIiR7YnVpbGRUeXBlQXJnc30iCgkJCV0KCQl9CgldCn0K"},{ name : "docs/flixel.defines.json", data : "WwoJeyJkZWZpbmUiOiAiRkxYX05PX01PVVNFIiwgImRvYyI6ICJSZW1vdmVzIG1vdXNlIHN1cHBvcnQgKEZseEcubW91c2UpLiBXaXRob3V0IGl0LCBmbGl4ZWwgZGVmaW5lcyBGTFhfTU9VU0UuIn0sCgl7ImRlZmluZSI6ICJGTFhfTk9fTU9VU0VfQURWQU5DRUQiLCAiZG9jIjogIlJlbW92ZXMgbWlkZGxlIGFuZCByaWdodCBtb3VzZSBidXR0b24gZXZlbnRzLiBXaXRob3V0IGl0IChhbmQgb3V0c2lkZSBGbGFzaCA8IDExLjIpLCBmbGl4ZWwgZGVmaW5lcyBGTFhfTU9VU0VfQURWQU5DRUQuIn0sCgl7ImRlZmluZSI6ICJGTFhfTk9fTkFUSVZFX0NVUlNPUiIsICJkb2MiOiAiRGlzYWJsZXMgbmF0aXZlIG1vdXNlIGN1cnNvcnMgb24gRmxhc2ggMTAuMisuIFdpdGhvdXQgaXQsIGZsaXhlbCBkZWZpbmVzIEZMWF9OQVRJVkVfQ1VSU09SIHRoZXJlLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX05PX1RPVUNIIiwgImRvYyI6ICJSZW1vdmVzIHRvdWNoIHN1cHBvcnQgKEZseEcudG91Y2hlcykuIFdpdGhvdXQgaXQsIGZsaXhlbCBkZWZpbmVzIEZMWF9UT1VDSC4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19LRVlCT0FSRCIsICJkb2MiOiAiUmVtb3ZlcyBrZXlib2FyZCBzdXBwb3J0IChGbHhHLmtleXMpLiBXaXRob3V0IGl0LCBmbGl4ZWwgZGVmaW5lcyBGTFhfS0VZQk9BUkQuIn0sCgl7ImRlZmluZSI6ICJGTFhfTk9fR0FNRVBBRCIsICJkb2MiOiAiUmVtb3ZlcyBnYW1lcGFkIHN1cHBvcnQgKEZseEcuZ2FtZXBhZHMpLiBXaXRob3V0IGl0LCBmbGl4ZWwgZGVmaW5lcyBGTFhfR0FNRVBBRC4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19TT1VORF9TWVNURU0iLCAiZG9jIjogIlJlbW92ZXMgZmxpeGVsJ3Mgc291bmQgc3lzdGVtIChGbHhHLnNvdW5kKS4gQWxzbyBkaXNhYmxlcyB0aGUgc291bmQgdHJheSBhbmQgcGl0Y2ggY29udHJvbC4gV2l0aG91dCBpdCwgZmxpeGVsIGRlZmluZXMgRkxYX1NPVU5EX1NZU1RFTS4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19TT1VORF9UUkFZIiwgImRvYyI6ICJSZW1vdmVzIHRoZSB2b2x1bWUgc291bmQgdHJheS4gV2l0aG91dCBpdCAoYW5kIHdpdGggdGhlIHNvdW5kIHN5c3RlbSksIGZsaXhlbCBkZWZpbmVzIEZMWF9TT1VORF9UUkFZLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX05PX0ZPQ1VTX0xPU1RfU0NSRUVOIiwgImRvYyI6ICJSZW1vdmVzIHRoZSBzY3JlZW4gc2hvd24gd2hlbiB0aGUgZ2FtZSBsb3NlcyBmb2N1cy4gV2l0aG91dCBpdCwgZmxpeGVsIGRlZmluZXMgRkxYX0ZPQ1VTX0xPU1RfU0NSRUVOLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX05PX0RFQlVHIiwgImRvYyI6ICJSZW1vdmVzIHRoZSBkZWJ1Z2dlciBhbmQgZGVidWcgZHJhd2luZy4gV2l0aG91dCBpdCwgZmxpeGVsIGRlZmluZXMgRkxYX0RFQlVHICh3aGljaCBhbHNvIGRlZmluZXMgRkxYX1RSQUNLX0dSQVBISUNTKS4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19IRUFMVEgiLCAiZG9jIjogIlJlbW92ZXMgRmx4T2JqZWN0LmhlYWx0aC4ifSwKCXsiZGVmaW5lIjogIkZMWF9IRUFMVEgiLCAiZG9jIjogIkVuYWJsZXMgRmx4T2JqZWN0LmhlYWx0aC4gRmxpeGVsIGRlZmluZXMgaXQgYXV0b21hdGljYWxseSB3aGVuIG5laXRoZXIgRkxYX0hFQUxUSCBub3IgRkxYX05PX0hFQUxUSCBpcyBzZXQuIn0sCgl7ImRlZmluZSI6ICJGTFhfUkVDT1JEIiwgImRvYyI6ICJFbmFibGVzIGZsaXhlbCdzIHJlcGxheSByZWNvcmRpbmcgc3VwcG9ydC4ifSwKCXsiZGVmaW5lIjogIkZMWF9SRU5ERVJfVFJJQU5HTEUiLCAiZG9jIjogIkFkZGl0aW9uYWwgcmVuZGVyaW5nIGRlZmluZS4ifSwKCXsiZGVmaW5lIjogIkZMWF80X0xFR0FDWV9DT0xMSVNJT04iLCAiZG9jIjogIlVzZXMgZmxpeGVsIDQuMCBsZWdhY3kgY29sbGlzaW9uLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX05PX1BPSU5UX1BPT0wiLCAiZG9jIjogIlNpbXBsaWZpZXMgRmx4UG9pbnQgYnkgbm90IHBvb2xpbmcgaW5zdGFuY2VzLCB3aGljaCBjYW4gaW5jcmVhc2UgR0MgZnJlcXVlbmN5LiBXaXRob3V0IGl0LCBmbGl4ZWwgZGVmaW5lcyBGTFhfUE9JTlRfUE9PTC4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19QSVRDSCIsICJkb2MiOiAiRGlzYWJsZXMgc291bmQgcGl0Y2ggY29udHJvbC4gRGVmaW5lZCBhdXRvbWF0aWNhbGx5IG9uIEZsYXNoIGFuZCB3aXRoIEZMWF9OT19TT1VORF9TWVNURU07IG90aGVyd2lzZSBmbGl4ZWwgZGVmaW5lcyBGTFhfUElUQ0guIn0sCgl7ImRlZmluZSI6ICJGTFhfTk9fU0FWRSIsICJkb2MiOiAiUmVtb3ZlcyBGbHhHLnNhdmUuIFdpdGhvdXQgaXQsIGZsaXhlbCBkZWZpbmVzIEZMWF9TQVZFLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX1RSQUNLX1BPT0xTIiwgImRvYyI6ICJBZGRzIHRyYWNrZXJzIHRvIEZseFBvb2wgaW5zdGFuY2VzLiBPbmx5IGFsbG93ZWQgaW4gZGVidWcgYnVpbGRzLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX1RSQUNLX0dSQVBISUNTIiwgImRvYyI6ICJBZGRzIGBjcmVhdGlvbkluZm9gIHRvIEZseEdyYXBoaWMgaW5zdGFuY2VzLiBEZWZpbmVkIGF1dG9tYXRpY2FsbHkgd2l0aCBGTFhfREVCVUcuIn0sCgl7ImRlZmluZSI6ICJGTFhfQ1VTVE9NX0FTU0VUU19ESVJFQ1RPUlkiLCAiZG9jIjogIkxvYWRzIGFzc2V0cyBmcm9tIHRoZSBnaXZlbiByZWxhdGl2ZSBvciBhYnNvbHV0ZSBkaXJlY3RvcnkgaW5zdGVhZCBvZiB0aGUgYnVpbGQncyBhc3NldHMuIFVubGlrZSBvdGhlciBmbGFncywgaXQgdGFrZXMgYSBwYXRoLiBTeXMgdGFyZ2V0cyBvbmx5LiBXaGVuIGFzc2V0cyBjb21lIGVudGlyZWx5IGZyb20gb3V0c2lkZSB0aGUgYnVpbGQgZGlyZWN0b3J5LCBjb25zaWRlciBkaXNhYmxpbmcgPGFzc2V0cz4gdGFncyBpbiBQcm9qZWN0LnhtbCB0byBzYXZlIG1lbW9yeS4iLCAicGFyYW1zIjogWyJwYXRoIl19LAoJeyJkZWZpbmUiOiAiRkxYX0RFRkFVTFRfU09VTkRfRVhUIiwgImRvYyI6ICJBbGxvd3Mgc291bmQgcGF0aHMgd2l0aG91dCBhbiBleHRlbnNpb246IHRoZSB0YXJnZXQncyBkZWZhdWx0IHR5cGUgaXMgdXNlZCAob2dnIGV2ZXJ5d2hlcmUgZXhjZXB0IEZsYXNoLCB3aGljaCB1c2VzIG1wMykuIFNldCBpdCB0byBhIHN0cmluZyB0byB1c2UgdGhhdCBleHRlbnNpb24gaW5zdGVhZC4iLCAicGFyYW1zIjogWyJleHRlbnNpb24iXX0sCgl7ImRlZmluZSI6ICJGTFhfREVCVUdHRVJfU0NBTEUiLCAiZG9jIjogIk1ha2VzIHRoZSBkZWJ1Z2dlciB3aW5kb3dzIGJpZ2dlci4iLCAicGFyYW1zIjogWyJzY2FsZSJdfSwKCXsiZGVmaW5lIjogIkZMWF9VTklUX1RFU1QiLCAiZG9jIjogIkRlZmluZWQgaW4gSGF4ZUZsaXhlbCBDSSB0ZXN0czsgZG8gbm90IHVzZS4ifSwKCXsiZGVmaW5lIjogIkZMWF9DT1ZFUkFHRV9URVNUIiwgImRvYyI6ICJEZWZpbmVkIGluIEhheGVGbGl4ZWwgQ0kgdGVzdHM7IGRvIG5vdCB1c2UuIn0sCgl7ImRlZmluZSI6ICJGTFhfU1dGX1ZFUlNJT05fVEVTVCIsICJkb2MiOiAiRGVmaW5lZCBpbiBIYXhlRmxpeGVsIENJIHRlc3RzOyBkbyBub3QgdXNlLiJ9Cl0K"}];
 js_Boot.__toStr = ({ }).toString;
+Xml.Element = 0;
+Xml.PCData = 1;
+Xml.CData = 2;
+Xml.Comment = 3;
+Xml.DocType = 4;
+Xml.ProcessingInstruction = 5;
+Xml.Document = 6;
 bridge_Bridge.serverGuard = "process.on(\"disconnect\", () => { try { process.kill(-process.pid, \"SIGTERM\"); } catch (_) {} process.exit(0); }); require(process.argv[1]);";
 bridge_lsp_CompilerDocs.conditionLine = new EReg("^\\s*#(if|elseif)\\b","");
 bridge_lsp_CompilerDocs.wordChar = new EReg("[A-Za-z0-9_\\-]","");
@@ -6080,5 +7056,16 @@ bridge_util_Vars.placeholder = new EReg("\\$\\{([A-Za-z]+)\\}","g");
 bridge_util_Vars.wholePlaceholder = new EReg("^\\$\\{([A-Za-z]+)\\}$","");
 haxe_crypto_Base64.CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 haxe_crypto_Base64.BYTES = haxe_io_Bytes.ofString(haxe_crypto_Base64.CHARS);
+haxe_xml_Parser.escapes = (function($this) {
+	var $r;
+	let h = new haxe_ds_StringMap();
+	h.m.set("lt","<");
+	h.m.set("gt",">");
+	h.m.set("amp","&");
+	h.m.set("quot","\"");
+	h.m.set("apos","'");
+	$r = h;
+	return $r;
+}(this));
 bridge_Main.main();
 })(typeof window != "undefined" ? window : typeof global != "undefined" ? global : typeof self != "undefined" ? self : this);
