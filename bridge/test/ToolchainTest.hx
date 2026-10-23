@@ -72,6 +72,15 @@ class ToolchainTest extends utest.Test {
 		Assert.equals("mytool", result.source);
 	}
 
+	function testHaxe3VersionIsRead() {
+		final dir = Fixture.create({});
+		// Haxe 3 rejects --version and prints -version on stderr.
+		final haxe = Fixture.script(dir, "bin/haxe", 'if [ "$$1" = "-version" ]; then echo 3.4.7 >&2; else exit 1; fi');
+		final resolved = Toolchain.resolve(context(dir, null, null), {haxePath: haxe});
+		Assert.equals("3.4.7", resolved.version);
+		Assert.equals(3, resolved.major);
+	}
+
 	function testSiblingStdIsUsed() {
 		final dir = Fixture.create({"haxe/std/StdTypes.hx": ""});
 		final haxe = Fixture.script(dir, "haxe/haxe", "echo 4.3.7");

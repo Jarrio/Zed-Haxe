@@ -101,12 +101,15 @@ class Toolchain {
 		for (key => value in extraEnv) {
 			env.set(key, value);
 		}
-		final result = Exec.runSync([path, "--version"], {cwd: ctx.projectRoot, env: env});
-		if (result == null || result.code != 0) {
-			return null;
+		// Haxe 3 only knows `-version`.
+		for (flag in ["--version", "-version"]) {
+			final result = Exec.runSync([path, flag], {cwd: ctx.projectRoot, env: env});
+			if (result != null && result.code == 0) {
+				// Old Haxe versions print the version on stderr.
+				final output = StringTools.trim(result.stdout) != "" ? result.stdout : result.stderr;
+				return StringTools.trim(output);
+			}
 		}
-		// Old Haxe versions print the version on stderr.
-		final output = StringTools.trim(result.stdout) != "" ? result.stdout : result.stderr;
-		return StringTools.trim(output);
+		return null;
 	}
 }

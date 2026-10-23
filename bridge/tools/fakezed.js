@@ -60,6 +60,7 @@ child.stdout.on("data", (chunk) => {
           if (registration.method === "workspace/executeCommand") console.log("  commands registered: " + registration.registerOptions.commands.join(" | "));
         }
       }
+      if (message.method === "window/showMessageRequest") notices.push(message.params.message);
       send({ id: message.id, result: message.method === "workspace/configuration" ? message.params.items.map(() => ({})) : null });
     } else if (message.method === "$/progress" && message.params.value.kind === "end") {
       progressEnded++;

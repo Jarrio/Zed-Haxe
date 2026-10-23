@@ -2328,7 +2328,7 @@ class bridge_lsp_Rewrites {
 				this.showMessage(2,"Haxe: building the completion cache failed" + this.describeTarget() + ". " + "The project may not compile as configured; the language server log has the compiler output.");
 				break;
 			case "haxe/didDetectOldHaxeVersion":
-				this.showMessage(2,"Haxe " + Std.string(message.params.version) + " is too old for haxe-language-server. Use Haxe 4.3 or newer.");
+				this.showMessage(2,message.params.haxe4Preview == true ? "Haxe " + Std.string(message.params.version) + " is a Haxe 4 preview, which haxe-language-server only partly supports. Use a Haxe 4 release or newer." : "Haxe " + Std.string(message.params.version) + " is older than Haxe 4, so haxe-language-server falls back to a limited mode. Use Haxe 4 or newer.");
 				break;
 			case "haxe/didChangeDisplayPort":case "haxe/didChangeRequestQueue":case "haxe/didRunGlobalDiagnostics":case "haxe/didRunHaxeMethod":case "haxe/executeClientCommand":
 				break;
@@ -5263,12 +5263,19 @@ class bridge_toolchain_Toolchain {
 			let value = _g_value;
 			env[key1] = value;
 		}
-		let result = bridge_util_Exec.runSync([path,"--version"],{ cwd : ctx.projectRoot, env : env});
-		if(result == null || result.code != 0) {
-			return null;
+		let flag = "--version";
+		let result = bridge_util_Exec.runSync([path,flag],{ cwd : ctx.projectRoot, env : env});
+		if(result != null && result.code == 0) {
+			let output = StringTools.trim(result.stdout) != "" ? result.stdout : result.stderr;
+			return StringTools.trim(output);
 		}
-		let output = StringTools.trim(result.stdout) != "" ? result.stdout : result.stderr;
-		return StringTools.trim(output);
+		let flag1 = "-version";
+		let result1 = bridge_util_Exec.runSync([path,flag1],{ cwd : ctx.projectRoot, env : env});
+		if(result1 != null && result1.code == 0) {
+			let output = StringTools.trim(result1.stdout) != "" ? result1.stdout : result1.stderr;
+			return StringTools.trim(output);
+		}
+		return null;
 	}
 }
 bridge_toolchain_Toolchain.__name__ = "bridge.toolchain.Toolchain";

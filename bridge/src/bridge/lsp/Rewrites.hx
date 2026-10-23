@@ -198,7 +198,10 @@ class Rewrites {
 			case "haxe/haxeKeepsCrashing":
 				showMessage(Error, "Haxe: the compiler keeps crashing. See the language server log for details.");
 			case "haxe/didDetectOldHaxeVersion":
-				showMessage(Warning, 'Haxe ${message.params.version} is too old for haxe-language-server. Use Haxe 4.3 or newer.');
+				// The server sends this for Haxe 3 (it falls back to the old --display API) and Haxe 4 previews.
+				showMessage(Warning, message.params.haxe4Preview == true
+					? 'Haxe ${message.params.version} is a Haxe 4 preview, which haxe-language-server only partly supports. Use a Haxe 4 release or newer.'
+					: 'Haxe ${message.params.version} is older than Haxe 4, so haxe-language-server falls back to a limited mode. Use Haxe 4 or newer.');
 			case "haxe/didRunHaxeMethod" | "haxe/didChangeRequestQueue" | "haxe/didChangeDisplayPort" | "haxe/didRunGlobalDiagnostics" |
 				"haxe/executeClientCommand":
 				// Feed vshaxe's VS Code views; Zed has nowhere to show them.
