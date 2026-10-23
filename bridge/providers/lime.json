@@ -1,0 +1,97 @@
+{
+	"name": "lime",
+	"priority": 100,
+	"detect": [
+		"project.xml",
+		"Project.xml",
+		"project.hxp",
+		"project.lime"
+	],
+	"targets": [
+		"html5",
+		"hl",
+		"neko",
+		"linux",
+		"windows",
+		"mac",
+		"android",
+		"ios",
+		"air",
+		"flash",
+		"electron"
+	],
+	"buildTypes": {
+		"debug": [
+			"-debug"
+		],
+		"final": [
+			"-final"
+		]
+	},
+	"args": {
+		"command": [
+			[
+				"lime",
+				"display",
+				"${projectFile}",
+				"${target}",
+				"${buildTypeArgs}",
+				"-nocolor",
+				"-Ddisable-version-check"
+			],
+			[
+				"haxelib",
+				"run",
+				"lime",
+				"display",
+				"${projectFile}",
+				"${target}",
+				"${buildTypeArgs}",
+				"-nocolor",
+				"-Ddisable-version-check"
+			]
+		],
+		"cwd": "${projectDir}",
+		"output": "hxml"
+	},
+	"docs": [
+		{
+			"lib": "lime",
+			"metadata": "builtin:lime.meta.json"
+		},
+		{
+			"lib": "openfl",
+			"metadata": "builtin:openfl.meta.json"
+		},
+		{
+			"lib": "flixel",
+			"defines": "builtin:flixel.defines.json"
+		}
+	],
+	"tasks": [
+		{
+			"label": "lime: test ${target}",
+			"command": [
+				"haxelib",
+				"run",
+				"lime",
+				"test",
+				"${projectFile}",
+				"${target}",
+				"${buildTypeArgs}"
+			]
+		},
+		{
+			"label": "lime: build ${target}",
+			"command": [
+				"haxelib",
+				"run",
+				"lime",
+				"build",
+				"${projectFile}",
+				"${target}",
+				"${buildTypeArgs}"
+			]
+		}
+	]
+}

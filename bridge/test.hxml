@@ -1,0 +1,11 @@
+# Runs the unit tests: haxe test.hxml
+-lib hxnodejs
+-lib utest
+-cp src
+-cp test
+-main TestMain
+-D js-es=6
+--macro bridge.Embed.folder("providers")
+--macro bridge.Embed.folder("docs")
+-js bin/test.js
+--cmd node bin/test.js

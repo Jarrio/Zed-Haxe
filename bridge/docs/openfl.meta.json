@@ -1,0 +1,4 @@
+[
+	{"metadata": ":bitmap", "doc": "Embeds an image into a class extending openfl.display.BitmapData. The path is relative to the working directory or a class path.", "params": ["path"], "targets": ["TClass"]},
+	{"metadata": ":sound", "doc": "Embeds a sound into a class extending openfl.media.Sound. The path is relative to the working directory or a class path.", "params": ["path"], "targets": ["TClass"]}
+]

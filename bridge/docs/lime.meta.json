@@ -1,0 +1,5 @@
+[
+	{"metadata": ":file", "doc": "Embeds a file's bytes into a class extending haxe.io.Bytes or openfl.utils.ByteArray. The path is relative to the working directory or a class path.", "params": ["path"], "targets": ["TClass"]},
+	{"metadata": ":image", "doc": "Embeds an image into a class extending lime.graphics.Image. The path is relative to the working directory or a class path.", "params": ["path"], "targets": ["TClass"]},
+	{"metadata": ":font", "doc": "Embeds a font into a class extending lime.text.Font (or openfl.text.Font). The path is relative to the working directory or a class path.", "params": ["path"], "targets": ["TClass"]}
+]

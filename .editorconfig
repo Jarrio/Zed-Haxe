@@ -14,3 +14,7 @@ indent_size = 4
 
 [*.mjs]
 indent_size = 4
+
+# The bridge follows the usual Haxe style (haxe-formatter's defaults).
+[bridge/**.{hx,hxml,json}]
+indent_style = tab
