@@ -1,0 +1,42 @@
+{
+	"name": "Ceramic, with its own Haxe",
+	"project": "${TEST_PROJECTS}/ceramic",
+	"open": "src/MainScene.hx",
+	"pinHaxe": false,
+	"steps": [
+		{
+			"name": "uses Ceramic's Haxe",
+			"do": "log",
+			"expect": {
+				"contains": [
+					"provider=ceramic",
+					"(provider,"
+				]
+			}
+		},
+		{
+			"name": "completion",
+			"do": "completion",
+			"edit": {
+				"find": "        add(logo);",
+				"replace": "        add(logo);\n        logo.po"
+			},
+			"at": "        logo.po",
+			"offset": 15,
+			"expect": {
+				"includes": [
+					"pos"
+				]
+			}
+		},
+		{
+			"name": "hover with Ceramic's docs",
+			"do": "hover",
+			"at": "var logo:Quad",
+			"offset": 10,
+			"expect": {
+				"contains": "class Quad"
+			}
+		}
+	]
+}

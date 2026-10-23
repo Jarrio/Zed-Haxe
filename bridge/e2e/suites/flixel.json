@@ -1,0 +1,52 @@
+{
+	"name": "HaxeFlixel through Lime",
+	"project": "${TEST_PROJECTS}/flixel",
+	"open": "source/PlayState.hx",
+	"pinHaxe": false,
+	"steps": [
+		{
+			"name": "asks lime for the arguments",
+			"do": "log",
+			"expect": {
+				"contains": "provider=lime"
+			}
+		},
+		{
+			"name": "completion with Flixel's docs",
+			"do": "completion",
+			"edit": {
+				"find": "\t\tsuper.create();",
+				"replace": "\t\tsuper.create();\n\t\tthis.ad"
+			},
+			"at": "\t\tthis.ad",
+			"offset": 9,
+			"expect": {
+				"includes": [
+					"add",
+					"members"
+				]
+			}
+		},
+		{
+			"name": "go to definition into the library",
+			"do": "definition",
+			"at": "extends FlxState",
+			"offset": 10,
+			"expect": {
+				"file": "flixel/FlxState.hx"
+			}
+		},
+		{
+			"name": "switching target",
+			"do": "command",
+			"command": "Haxe: target neko"
+		},
+		{
+			"name": "... the project follows",
+			"do": "log",
+			"expect": {
+				"contains": "target=neko"
+			}
+		}
+	]
+}

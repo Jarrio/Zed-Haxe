@@ -1,0 +1,111 @@
+{
+	"name": "Custom provider and Haxe lookup from settings",
+	"project": "projects/custom",
+	"open": "src/Main.hx",
+	"pinHaxe": false,
+	"settings": {
+		"providers": [
+			{
+				"name": "custom",
+				"detect": [
+					"custom.project"
+				],
+				"targets": [
+					"a",
+					"b"
+				],
+				"args": {
+					"command": [
+						"node",
+						"tools/display.js",
+						"${target}"
+					],
+					"output": "json"
+				},
+				"watch": [
+					"custom.project"
+				]
+			}
+		],
+		"resolvers": [
+			{
+				"name": "fake-manager",
+				"command": [
+					"node",
+					"tools/which-haxe.js"
+				]
+			}
+		],
+		"haxeResolvers": [
+			"fake-manager",
+			"path"
+		]
+	},
+	"steps": [
+		{
+			"name": "uses the provider and the Haxe lookup",
+			"do": "log",
+			"expect": {
+				"contains": [
+					"provider=custom target=a",
+					"(fake-manager,"
+				]
+			}
+		},
+		{
+			"name": "asks which target to use",
+			"do": "notices",
+			"expect": {
+				"contains": "using the custom target \"a\""
+			}
+		},
+		{
+			"name": "completion follows target a",
+			"do": "completion",
+			"edit": {
+				"find": "\t\ttrace(circle.area());",
+				"replace": "\t\ttrace(circle.area());\n\t\tonTarget"
+			},
+			"at": "\t\tonTarget",
+			"offset": 10,
+			"expect": {
+				"includes": [
+					"onTargetA"
+				],
+				"excludes": [
+					"onTargetB"
+				]
+			}
+		},
+		{
+			"name": "switching to target b",
+			"do": "command",
+			"command": "Haxe: target b"
+		},
+		{
+			"name": "... completion follows target b",
+			"do": "completion",
+			"edit": {
+				"find": "\t\ttrace(circle.area());",
+				"replace": "\t\ttrace(circle.area());\n\t\tonTarget"
+			},
+			"at": "\t\tonTarget",
+			"offset": 10,
+			"expect": {
+				"includes": [
+					"onTargetB"
+				],
+				"excludes": [
+					"onTargetA"
+				]
+			}
+		},
+		{
+			"name": "commands show the current target",
+			"do": "log",
+			"expect": {
+				"contains": "target=b"
+			}
+		}
+	]
+}

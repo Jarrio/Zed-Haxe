@@ -210,7 +210,7 @@ to classes, and which attribute values are Haxe code. Everything else is shared.
 
 ## Development
 
-You need Haxe, Node.js and [Rust](https://rustup.rs/).
+You need Haxe 4.3.7, Node.js and [Rust](https://rustup.rs/).
 
 ```sh
 cd bridge
@@ -218,7 +218,21 @@ haxelib newrepo
 haxelib state load install.hxml
 haxe build.hxml   # writes bin/bridge.js, which the Rust side embeds
 haxe test.hxml    # unit tests
+node e2e/run.js   # end-to-end tests
 ```
+
+Build `bin/bridge.js` with Haxe 4.3.7: CI rebuilds it and fails when the committed file differs.
+
+The end-to-end tests start the real bridge, haxe-language-server and Haxe, and talk to them the
+way Zed does (`e2e/client.js`). Each suite in `e2e/suites/` opens a project, edits and asks, and
+checks the answers. Requests that get no answer fail the run, so hangs show up too.
+
+- `node e2e/run.js hxml` runs one suite; `--haxe=PATH` runs them with another compiler.
+- The projects in `e2e/projects/` run anywhere, including CI on Linux, macOS and Windows.
+- The Lime/Flixel, Ceramic, HaxeUI and `.haxerc` suites need real projects with their libraries
+  installed: point `TEST_PROJECTS` at a folder holding `flixel/`, `ceramic/`, `SkiaHaxeuiTemplate/`
+  and `haxerc-hx/`. Without it they are skipped.
+- `tools/fakezed.js` drives the bridge the same way but prints what comes back, for exploring.
 
 Then in Zed's Extensions panel, click `Install Dev Extension` and pick this folder.
 Zed compiles the Rust part; the first time it may download its WASM toolchain (about 500 MiB).

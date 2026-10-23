@@ -1,0 +1,202 @@
+{
+	"name": "Plain hxml project",
+	"project": "projects/hxml",
+	"open": "src/rank/Child.hx",
+	"steps": [
+		{
+			"name": "detects build.hxml",
+			"do": "log",
+			"expect": {
+				"contains": "provider=hxml target=build.hxml"
+			}
+		},
+		{
+			"name": "completion after this. lists the class's own members first, other classes' private ones last",
+			"do": "completion",
+			"edit": {
+				"find": "\t\ttrace(\"dot\");",
+				"replace": "\t\ttrace(\"dot\");\n\t\tthis."
+			},
+			"at": "\t\tthis.",
+			"offset": 7,
+			"trigger": ".",
+			"expect": {
+				"includes": [
+					"shown",
+					"mySecret",
+					"_myCache",
+					"_myHelper",
+					"visible",
+					"baseSecret",
+					"_internalState",
+					"_baseHelper"
+				],
+				"before": [
+					[
+						"_myCache",
+						"visible"
+					],
+					[
+						"mySecret",
+						"visible"
+					],
+					[
+						"visible",
+						"baseSecret"
+					],
+					[
+						"baseSecret",
+						"_baseHelper"
+					]
+				]
+			}
+		},
+		{
+			"name": "another class in the module doesn't see Child's private members",
+			"do": "completion",
+			"edit": {
+				"find": "\t\ttrace(\"sibling\");",
+				"replace": "\t\ttrace(\"sibling\");\n\t\tchild."
+			},
+			"at": "\t\tchild.",
+			"offset": 8,
+			"trigger": ".",
+			"expect": {
+				"includes": [
+					"shown",
+					"visible"
+				],
+				"excludes": [
+					"mySecret",
+					"_myCache"
+				]
+			}
+		},
+		{
+			"name": "hover",
+			"do": "hover",
+			"at": "extends Base",
+			"offset": 9,
+			"expect": {
+				"contains": "class Base"
+			}
+		},
+		{
+			"name": "go to definition",
+			"do": "definition",
+			"at": "extends Base",
+			"offset": 9,
+			"expect": {
+				"file": "src/rank/Base.hx",
+				"line": 2
+			}
+		},
+		{
+			"name": "go to type definition",
+			"do": "typeDefinition",
+			"at": "check(child",
+			"offset": 7,
+			"expect": {
+				"file": "src/rank/Child.hx",
+				"line": 3
+			}
+		},
+		{
+			"name": "type definition of a function answers instead of hanging",
+			"do": "typeDefinition",
+			"at": "trace(\"dot\")",
+			"offset": 2,
+			"expect": {
+				"empty": true
+			}
+		},
+		{
+			"name": "implementation of a function answers instead of hanging",
+			"do": "implementation",
+			"at": "trace(\"dot\")",
+			"offset": 2,
+			"expect": {
+				"empty": true
+			}
+		},
+		{
+			"name": "signature help",
+			"do": "signatureHelp",
+			"edit": {
+				"find": "\t\ttrace(\"dot\");",
+				"replace": "\t\ttrace(\"dot\");\n\t\ttrace("
+			},
+			"at": "\t\ttrace(\n",
+			"offset": 8,
+			"expect": {
+				"contains": "v:Dynamic"
+			}
+		},
+		{
+			"name": "workspace symbols",
+			"do": "symbols",
+			"query": "Shape",
+			"expect": {
+				"includes": [
+					"Shape"
+				]
+			}
+		},
+		{
+			"name": "diagnostics for a file with errors",
+			"do": "diagnostics",
+			"file": "src/Broken.hx",
+			"expect": {
+				"atLeast": 2,
+				"contains": "missingFunction"
+			}
+		},
+		{
+			"name": "a base class changed on disk shows up in completion",
+			"do": "changeOnDisk",
+			"file": "src/rank/Base.hx",
+			"find": "\tpublic var visible:Bool = true;",
+			"replace": "\tpublic var visible:Bool = true;\n\tpublic var addedOnDisk:Int = 0;"
+		},
+		{
+			"name": "... completion sees it",
+			"do": "completion",
+			"edit": {
+				"find": "\t\ttrace(\"dot\");",
+				"replace": "\t\ttrace(\"dot\");\n\t\tthis."
+			},
+			"at": "\t\tthis.",
+			"offset": 7,
+			"trigger": ".",
+			"expect": {
+				"includes": [
+					"addedOnDisk"
+				]
+			}
+		},
+		{
+			"name": "a base class edited and saved in the editor shows up in completion",
+			"do": "editAndSave",
+			"file": "src/rank/Base.hx",
+			"find": "\tvar baseSecret:Int = 0;",
+			"replace": "\tvar baseSecret:Int = 0;\n\tpublic var savedInEditor:Int = 0;"
+		},
+		{
+			"name": "... completion sees it",
+			"do": "completion",
+			"edit": {
+				"find": "\t\ttrace(\"dot\");",
+				"replace": "\t\ttrace(\"dot\");\n\t\tthis."
+			},
+			"at": "\t\tthis.",
+			"offset": 7,
+			"trigger": ".",
+			"expect": {
+				"includes": [
+					"savedInEditor",
+					"addedOnDisk"
+				]
+			}
+		}
+	]
+}

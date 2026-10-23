@@ -1,0 +1,143 @@
+{
+	"name": "HaxeUI markup (SkiaHaxeuiTemplate)",
+	"project": "${TEST_PROJECTS}/SkiaHaxeuiTemplate",
+	"open": "src/ui/Windows.hx",
+	"pinHaxe": false,
+	"steps": [
+		{
+			"name": "tag completion",
+			"do": "completion",
+			"edit": {
+				"find": "<link id=\"openSimpleFormLink\" text=\"Open Simple Form Example\" />",
+				"replace": "<link id=\"openSimpleFormLink\" text=\"Open Simple Form Example\" />\n\t\t\t\t<but"
+			},
+			"at": "\t\t\t\t<but",
+			"offset": 8,
+			"expect": {
+				"includes": [
+					"button",
+					"buttonbar"
+				]
+			}
+		},
+		{
+			"name": "attribute completion",
+			"do": "completion",
+			"edit": {
+				"find": "<link id=\"openSimpleFormLink\" text=\"Open Simple Form Example\" />",
+				"replace": "<link id=\"openSimpleFormLink\" text=\"Open Simple Form Example\" />\n\t\t\t\t<button te"
+			},
+			"at": "<button te",
+			"offset": 10,
+			"expect": {
+				"includes": [
+					"text",
+					"textAlign"
+				]
+			}
+		},
+		{
+			"name": "Bool attribute values",
+			"do": "completion",
+			"edit": {
+				"find": "<link id=\"openSimpleFormLink\" text=\"Open Simple Form Example\" />",
+				"replace": "<link id=\"openSimpleFormLink\" text=\"Open Simple Form Example\" />\n\t\t\t\t<button disabled=\"\""
+			},
+			"at": "disabled=\"",
+			"offset": 10,
+			"expect": {
+				"includes": [
+					"true",
+					"false"
+				]
+			}
+		},
+		{
+			"name": "Haxe completion in onclick while the tag is still open",
+			"do": "completion",
+			"edit": {
+				"find": "<link id=\"openSimpleFormLink\" text=\"Open Simple Form Example\" />",
+				"replace": "<link id=\"openSimpleFormLink\" text=\"Open Simple Form Example\" />\n\t\t\t\t<button onclick=\"windowCon\""
+			},
+			"at": "onclick=\"windowCon",
+			"offset": 18,
+			"expect": {
+				"includes": [
+					"windowContainer"
+				]
+			}
+		},
+		{
+			"name": "Haxe completion in onclick in a closed tag",
+			"do": "completion",
+			"edit": {
+				"find": "<link id=\"openSimpleFormLink\" text=\"Open Simple Form Example\" />",
+				"replace": "<link id=\"openSimpleFormLink\" text=\"Open Simple Form Example\" />\n\t\t\t\t<button onclick=\"windowCon\" />"
+			},
+			"at": "onclick=\"windowCon",
+			"offset": 18,
+			"expect": {
+				"includes": [
+					"windowContainer"
+				]
+			}
+		},
+		{
+			"name": "go to definition from onclick into the class lands on the method",
+			"do": "definition",
+			"edit": {
+				"find": "<link id=\"openSimpleFormLink\" text=\"Open Simple Form Example\" />",
+				"replace": "<link id=\"openSimpleFormLink\" onclick=\"onOpenSimpleForm(null)\" text=\"Open Simple Form Example\" />"
+			},
+			"at": "onclick=\"onOpenSimp",
+			"offset": 15,
+			"expect": {
+				"file": "src/ui/Windows.hx",
+				"line": 28
+			}
+		},
+		{
+			"name": "hover on a tag",
+			"do": "hover",
+			"at": "<link id=\"openSimpleFormLink\"",
+			"offset": 2,
+			"expect": {
+				"contains": [
+					"haxe.ui.components.Link",
+					"behaves like a link"
+				]
+			}
+		},
+		{
+			"name": "hover on an attribute",
+			"do": "hover",
+			"at": "text=\"Open Simple Form",
+			"offset": 2,
+			"expect": {
+				"contains": "text:String"
+			}
+		},
+		{
+			"name": "go to definition of a tag",
+			"do": "definition",
+			"at": "<link id=\"openSimpleFormLink\"",
+			"offset": 2,
+			"expect": {
+				"file": "haxe/ui/components/Link.hx"
+			}
+		},
+		{
+			"name": "signature help in onclick",
+			"do": "signatureHelp",
+			"edit": {
+				"find": "<link id=\"openSimpleFormLink\" text=\"Open Simple Form Example\" />",
+				"replace": "<link id=\"openSimpleFormLink\" onclick=\"trace(\" text=\"Open Simple Form Example\" />"
+			},
+			"at": "onclick=\"trace(",
+			"offset": 15,
+			"expect": {
+				"contains": "v:Dynamic"
+			}
+		}
+	]
+}
