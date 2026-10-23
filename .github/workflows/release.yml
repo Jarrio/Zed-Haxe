@@ -35,7 +35,12 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          files=(haxe-zed.tar.gz scripts/install.sh scripts/install.ps1)
+          # A release made by hand from an earlier CI package keeps its notes; its files are replaced.
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+            exit 0
+          fi
           prerelease=()
           [[ "$GITHUB_REF_NAME" == *-* ]] && prerelease=(--prerelease)
-          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes "${prerelease[@]}" \
-            haxe-zed.tar.gz scripts/install.sh scripts/install.ps1
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes "${prerelease[@]}" "${files[@]}"
