@@ -182,6 +182,21 @@ class Reflect {
 			return -1;
 		}
 	}
+	static isObject(v) {
+		if(v == null) {
+			return false;
+		}
+		let t = typeof(v);
+		if(!(t == "string" || t == "object" && v.__enum__ == null)) {
+			if(t == "function") {
+				return (v.__name__ || v.__ename__) != null;
+			} else {
+				return false;
+			}
+		} else {
+			return true;
+		}
+	}
 	static deleteField(o,field) {
 		if(!Object.prototype.hasOwnProperty.call(o,field)) {
 			return false;
@@ -456,6 +471,7 @@ class bridge_Bridge {
 	constructor(serverPath) {
 		this.nextId = 1;
 		this.waiting = new haxe_ds_StringMap();
+		this.uris = new bridge_lsp_ClientUris(process.platform == "win32");
 		this.serverProcess = js_node_ChildProcess.spawn(process.execPath,["--no-deprecation","-e",bridge_Bridge.serverGuard,serverPath],{ stdio : ["pipe","pipe","inherit","ipc"], detached : process.platform != "win32"});
 		this.serverProcess.on("error",function(error) {
 			bridge_Log.info("could not start the language server (" + serverPath + "): " + error);
@@ -487,6 +503,7 @@ class bridge_Bridge {
 		this.rewrites = new bridge_lsp_Rewrites(this);
 		this.client.onMessage = function(message) {
 			bridge_Log.message("zed -> bridge",message);
+			_gthis.uris.learn(message);
 			if(!_gthis.settle(message)) {
 				_gthis.rewrites.fromClient(message);
 			}
@@ -513,6 +530,7 @@ class bridge_Bridge {
 		this.server.send(message);
 	}
 	toClient(message) {
+		this.uris.respell(message);
 		bridge_Log.message("bridge -> zed",message);
 		this.client.send(message);
 	}
@@ -784,6 +802,81 @@ class bridge_lsp_Client {
 bridge_lsp_Client.__name__ = "bridge.lsp.Client";
 Object.assign(bridge_lsp_Client.prototype, {
 	__class__: bridge_lsp_Client
+});
+class bridge_lsp_ClientUris {
+	constructor(enabled) {
+		this.spellings = new haxe_ds_StringMap();
+		this.enabled = enabled;
+	}
+	learn(message) {
+		let _gthis = this;
+		if(this.enabled) {
+			bridge_lsp_ClientUris.visit(message,function(uri) {
+				let this1 = _gthis.spellings;
+				let key = bridge_util_Uris.windowsKey(uri);
+				this1.h[key] = uri;
+				return uri;
+			});
+		}
+	}
+	respell(message) {
+		let _gthis = this;
+		if(this.enabled) {
+			bridge_lsp_ClientUris.visit(message,function(uri) {
+				let this1 = _gthis.spellings;
+				let key = bridge_util_Uris.windowsKey(uri);
+				let tmp = this1.h[key];
+				if(tmp != null) {
+					return tmp;
+				} else {
+					return bridge_util_Uris.withDrive(uri);
+				}
+			});
+		}
+	}
+	static visit(value,replace) {
+		if(typeof(value) == "string") {
+			if(bridge_lsp_ClientUris.isFileUri(value)) {
+				return replace(value);
+			} else {
+				return value;
+			}
+		}
+		if(((value) instanceof Array)) {
+			let array = value;
+			let _g = 0;
+			let _g1 = array.length;
+			while(_g < _g1) {
+				let i = _g++;
+				array[i] = bridge_lsp_ClientUris.visit(array[i],replace);
+			}
+		} else if(value != null && Reflect.isObject(value)) {
+			let _g = 0;
+			let _g1 = Reflect.fields(value);
+			while(_g < _g1.length) {
+				let field = _g1[_g];
+				++_g;
+				let replaced = bridge_lsp_ClientUris.visit(Reflect.field(value,field),replace);
+				let name = bridge_lsp_ClientUris.isFileUri(field) ? replace(field) : field;
+				if(name != field) {
+					Reflect.deleteField(value,field);
+				}
+				value[name] = replaced;
+			}
+		}
+		return value;
+	}
+	static isFileUri(text) {
+		if(text.startsWith("file:")) {
+			return !new EReg("\\s","").match(text);
+		} else {
+			return false;
+		}
+	}
+}
+bridge_lsp_ClientUris.__name__ = "bridge.lsp.ClientUris";
+Object.assign(bridge_lsp_ClientUris.prototype, {
+	__class__: bridge_lsp_ClientUris
 });
 var bridge_lsp_DocContext = $hxEnums["bridge.lsp.DocContext"] = { __ename__:true,__constructs__:null
 	,Define: ($_=function(name) { return {_hx_index:0,name:name,__enum__:"bridge.lsp.DocContext",toString:$estr}; },$_._hx_name="Define",$_.__params__ = ["name"],$_)
@@ -2094,7 +2187,7 @@ class bridge_lsp_Probe {
 		while(_g < locations.length) {
 			let location = locations[_g];
 			++_g;
-			if(location.uri == uri) {
+			if(bridge_util_Uris.sameFile(location.uri,uri)) {
 				let start = this.toOriginal(bridge_lsp_Documents.offsetAt(this.text,location.range.start));
 				let end = this.toOriginal(bridge_lsp_Documents.offsetAt(this.text,location.range.end));
 				location.range = { start : bridge_lsp_Documents.positionAt(this.original,start), end : bridge_lsp_Documents.positionAt(this.original,end)};
@@ -5415,8 +5508,12 @@ bridge_toolchain_Toolchain.__name__ = "bridge.toolchain.Toolchain";
 class bridge_util_Exec {
 	static run(command,options) {
 		let executable = bridge_util_Exec.alias(command[0],options.aliases);
+		let start = bridge_util_Exec.prepare(executable,command.slice(1),options);
+		if(start == null) {
+			return Promise.reject(new bridge_util_NotFound(executable));
+		}
 		return new Promise(function(resolve,reject) {
-			let child = js_node_ChildProcess.spawn(executable,command.slice(1),{ cwd : options.cwd, env : options.env, shell : bridge_util_Exec.isWindows, windowsHide : true});
+			let child = js_node_ChildProcess.spawn(start.file,start.args,{ cwd : options.cwd, env : options.env, windowsHide : true, windowsVerbatimArguments : start.verbatim});
 			let stdout = [];
 			let stderr = [];
 			let tmp = options.timeout;
@@ -5459,11 +5556,63 @@ class bridge_util_Exec {
 		});
 	}
 	static runSync(command,options) {
-		let result = js_node_ChildProcess.spawnSync(bridge_util_Exec.alias(command[0],options.aliases),command.slice(1),{ cwd : options.cwd, env : options.env, shell : bridge_util_Exec.isWindows, windowsHide : true, encoding : "utf8", timeout : 15000});
+		let start = bridge_util_Exec.prepare(bridge_util_Exec.alias(command[0],options.aliases),command.slice(1),options);
+		if(start == null) {
+			return null;
+		}
+		let result = js_node_ChildProcess.spawnSync(start.file,start.args,{ cwd : options.cwd, env : options.env, windowsHide : true, windowsVerbatimArguments : start.verbatim, encoding : "utf8", timeout : 15000});
 		if(result.error != null) {
 			return null;
 		}
 		return { code : result.status == null ? -1 : result.status, stdout : Std.string(result.stdout), stderr : Std.string(result.stderr)};
+	}
+	static prepare(executable,args,options) {
+		if(!bridge_util_Exec.isWindows) {
+			return { file : executable, args : args, verbatim : false};
+		}
+		let file = bridge_util_Files.executable(executable,options.env,options.cwd);
+		if(file == null) {
+			return null;
+		} else {
+			let tmp = bridge_util_Files.variable(options.env,"COMSPEC",true);
+			return bridge_util_Exec.windowsStart(file,args,tmp != null ? tmp : "cmd.exe");
+		}
+	}
+	static windowsStart(file,args,comSpec) {
+		if(new EReg("\\.(com|exe)$","i").match(file)) {
+			return { file : file, args : args, verbatim : false};
+		}
+		let launcher = file.split("/").join("\\");
+		let twice = new EReg("node_modules[\\\\/]\\.bin[\\\\/][^\\\\/]+\\.cmd$","i").match(launcher);
+		let line = [bridge_util_Exec.escapeMeta(launcher)];
+		let _g = [];
+		let _g1 = 0;
+		while(_g1 < args.length) {
+			let arg = args[_g1];
+			++_g1;
+			_g.push(bridge_util_Exec.escapeArgument(arg,twice));
+		}
+		let line1 = line.concat(_g).join(" ");
+		return { file : comSpec, args : ["/d","/s","/c","\"" + line1 + "\""], verbatim : true};
+	}
+	static escapeArgument(arg,twice) {
+		let quoted = new EReg("(\\\\*)\"","g").map(arg,function(re) {
+			return re.matched(1) + re.matched(1) + "\\\"";
+		});
+		quoted = new EReg("(\\\\*)$","").map(quoted,function(re) {
+			return re.matched(1) + re.matched(1);
+		});
+		quoted = bridge_util_Exec.escapeMeta("\"" + quoted + "\"");
+		if(twice) {
+			return bridge_util_Exec.escapeMeta(quoted);
+		} else {
+			return quoted;
+		}
+	}
+	static escapeMeta(text) {
+		return new EReg("([()\\][%!^\"`<>&|;, *?])","g").map(text,function(re) {
+			return "^" + re.matched(1);
+		});
 	}
 	static alias(executable,aliases) {
 		if(aliases != null && Object.prototype.hasOwnProperty.call(aliases,executable)) {
@@ -5544,14 +5693,14 @@ class bridge_util_Files {
 		}
 		return result;
 	}
-	static which(name,env) {
-		let windows = process.platform == "win32";
-		let tmp = env[windows ? "Path" : "PATH"];
-		let tmp1 = tmp != null ? tmp : env["PATH"];
+	static which(name,env,windows) {
+		let tmp = windows;
+		let onWindows = tmp != null ? tmp : bridge_util_Files.isWindows;
+		let tmp1 = bridge_util_Files.variable(env,"PATH",onWindows);
 		let pathVariable = tmp1 != null ? tmp1 : "";
-		let extensions = windows ? ["",".exe",".cmd",".bat"] : [""];
+		let extensions = onWindows ? bridge_util_Files.windowsExtensions(name,env) : [""];
 		let _g = 0;
-		let _g1 = pathVariable.split(windows ? ";" : ":");
+		let _g1 = pathVariable.split(onWindows ? ";" : ":");
 		while(_g < _g1.length) {
 			let dir = _g1[_g];
 			++_g;
@@ -5566,6 +5715,64 @@ class bridge_util_Files {
 				if(sys_FileSystem.exists(candidate) && !sys_FileSystem.isDirectory(candidate)) {
 					return candidate;
 				}
+			}
+		}
+		return null;
+	}
+	static executable(command,env,cwd,windows) {
+		let tmp = windows;
+		let onWindows = tmp != null ? tmp : bridge_util_Files.isWindows;
+		if(command.indexOf("/") < 0 && (!onWindows || command.indexOf("\\") < 0)) {
+			return bridge_util_Files.which(command,env,onWindows);
+		}
+		let path = haxe_io_Path.isAbsolute(command) ? command : haxe_io_Path.join([cwd,command]);
+		let extensions = onWindows ? bridge_util_Files.windowsExtensions(command,env) : [""];
+		let _g = 0;
+		while(_g < extensions.length) {
+			let extension = extensions[_g];
+			++_g;
+			if(sys_FileSystem.exists(path + extension) && !sys_FileSystem.isDirectory(path + extension)) {
+				return path + extension;
+			}
+		}
+		return null;
+	}
+	static windowsExtensions(name,env) {
+		let _g = [];
+		let _g1 = 0;
+		let tmp = bridge_util_Files.variable(env,"PATHEXT",true);
+		let _g2 = (tmp != null ? tmp : ".COM;.EXE;.BAT;.CMD").split(";");
+		while(_g1 < _g2.length) {
+			let extension = _g2[_g1];
+			++_g1;
+			if(extension != "") {
+				_g.push(extension.toLowerCase());
+			}
+		}
+		let pathExt = _g;
+		if(haxe_io_Path.extension(name) != "") {
+			return [""].concat(pathExt);
+		} else {
+			return pathExt;
+		}
+	}
+	static variable(env,name,windows) {
+		let tmp = windows;
+		if(!(tmp != null ? tmp : bridge_util_Files.isWindows) || Object.prototype.hasOwnProperty.call(env,name)) {
+			return env[name];
+		}
+		let access = env;
+		let _g_access = access;
+		let _g_keys = Reflect.fields(access);
+		let _g_index = 0;
+		while(_g_index < _g_keys.length) {
+			let key = _g_keys[_g_index++];
+			let _g_value = _g_access[key];
+			let _g_key = key;
+			let key1 = _g_key;
+			let value = _g_value;
+			if(key1.toUpperCase() == name) {
+				return value;
 			}
 		}
 		return null;
@@ -5656,6 +5863,35 @@ class bridge_util_Uris {
 	}
 	static fromPath(path) {
 		return js_node_Url.pathToFileURL(path).href;
+	}
+	static sameFile(a,b,windows) {
+		if(a != b) {
+			let tmp = windows;
+			if(tmp != null ? tmp : bridge_util_Uris.isWindows) {
+				return bridge_util_Uris.windowsKey(a) == bridge_util_Uris.windowsKey(b);
+			} else {
+				return false;
+			}
+		} else {
+			return true;
+		}
+	}
+	static windowsKey(uri) {
+		let spelled = bridge_util_Uris.withDrive(uri);
+		let tmp;
+		try {
+			tmp = decodeURIComponent(spelled);
+		} catch( _g ) {
+			tmp = spelled;
+		}
+		return tmp.toLowerCase();
+	}
+	static withDrive(uri) {
+		if(bridge_util_Uris.windowsDrive.match(uri)) {
+			return "file:///" + bridge_util_Uris.windowsDrive.matched(1).toUpperCase() + ":/" + bridge_util_Uris.windowsDrive.matchedRight();
+		} else {
+			return uri;
+		}
 	}
 }
 bridge_util_Uris.__name__ = "bridge.util.Uris";
@@ -6292,6 +6528,13 @@ class haxe_io_Path {
 			return "";
 		}
 		return s.dir;
+	}
+	static extension(path) {
+		let s = new haxe_io_Path(path);
+		if(s.ext == null) {
+			return "";
+		}
+		return s.ext;
 	}
 	static join(paths) {
 		let _g = [];
@@ -7235,7 +7478,10 @@ bridge_project_HxmlProvider.outputFlags = ["-js","--js","-cpp","--cpp","--cppia"
 bridge_rpc_Connection.contentLength = new EReg("Content-Length:\\s*(\\d+)","i");
 bridge_toolchain_Toolchain.defaultOrder = ["provider","lix","haxe-manager","path"];
 bridge_util_Exec.isWindows = process.platform == "win32";
+bridge_util_Files.isWindows = process.platform == "win32";
 bridge_util_Files.ignoredFolders = [".git",".haxelib",".zed","node_modules","haxe_libraries","haxe_modules","Export","export","bin","dump","out"];
+bridge_util_Uris.isWindows = process.platform == "win32";
+bridge_util_Uris.windowsDrive = new EReg("^file:///([A-Za-z])(:|%3[Aa])/","");
 bridge_util_Vars.placeholder = new EReg("\\$\\{([A-Za-z]+)\\}","g");
 bridge_util_Vars.wholePlaceholder = new EReg("^\\$\\{([A-Za-z]+)\\}$","");
 haxe_crypto_Base64.CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

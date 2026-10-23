@@ -10,6 +10,7 @@ class TestMain {
 		runner.addCase(new ToolchainTest());
 		runner.addCase(new RewritesTest());
 		runner.addCase(new MarkupTest());
+		runner.addCase(new WindowsTest());
 		runner.onComplete.add(_ -> Fixture.removeAll());
 		Report.create(runner);
 		runner.run();

@@ -21,6 +21,14 @@ typedef ExecOptions = {
 	var ?timeout:Int;
 }
 
+typedef Start = {
+	var file:String;
+	var args:Array<String>;
+
+	/** Pass the arguments to Windows as they are (they are already quoted for cmd.exe). **/
+	var verbatim:Bool;
+}
+
 typedef ExecResult = {
 	var code:Int;
 	var stdout:String;
@@ -29,6 +37,7 @@ typedef ExecResult = {
 
 /**
 	Runs external commands (`lime`, `ceramic`, `haxelib`, ...) without a shell.
+	On Windows, .cmd/.bat launchers go through cmd.exe with their arguments escaped (see `prepare`).
 **/
 class Exec {
 	static final isWindows = process.platform == "win32";
@@ -39,13 +48,16 @@ class Exec {
 	**/
 	public static function run(command:Array<String>, options:ExecOptions):Promise<ExecResult> {
 		final executable = alias(command[0], options.aliases);
+		final start = prepare(executable, command.slice(1), options);
+		if (start == null) {
+			return Promise.reject(new NotFound(executable));
+		}
 		return new Promise(function(resolve, reject) {
-			final child = ChildProcess.spawn(executable, command.slice(1), cast {
+			final child = ChildProcess.spawn(start.file, start.args, cast {
 				cwd: options.cwd,
 				env: options.env,
-				// Windows needs a shell to run .cmd/.bat launchers such as haxelib.cmd.
-				shell: isWindows,
-				windowsHide: true
+				windowsHide: true,
+				windowsVerbatimArguments: start.verbatim
 			});
 			final stdout = [];
 			final stderr = [];
@@ -92,11 +104,15 @@ class Exec {
 
 	/** Synchronous variant for quick queries such as `haxe --version`. Returns null when the executable doesn't exist. **/
 	public static function runSync(command:Array<String>, options:ExecOptions):Null<ExecResult> {
-		final result = ChildProcess.spawnSync(alias(command[0], options.aliases), command.slice(1), cast {
+		final start = prepare(alias(command[0], options.aliases), command.slice(1), options);
+		if (start == null) {
+			return null;
+		}
+		final result = ChildProcess.spawnSync(start.file, start.args, cast {
 			cwd: options.cwd,
 			env: options.env,
-			shell: isWindows,
 			windowsHide: true,
+			windowsVerbatimArguments: start.verbatim,
 			encoding: "utf8",
 			timeout: 15000
 		});
@@ -108,6 +124,45 @@ class Exec {
 			stdout: Std.string(result.stdout),
 			stderr: Std.string(result.stderr)
 		};
+	}
+
+	/**
+		What to start for `executable` and `args`, or null when the executable doesn't exist (Windows only;
+		elsewhere spawning reports that). Windows has no shell here: with one, Node joins the arguments
+		unquoted, so any path with a space breaks. So the executable is looked up on PATH, and only a
+		.cmd/.bat launcher (haxelib.cmd, lime.cmd) runs through cmd.exe, escaped as cross-spawn does it.
+	**/
+	static function prepare(executable:String, args:Array<String>, options:ExecOptions):Null<Start> {
+		if (!isWindows) {
+			return {file: executable, args: args, verbatim: false};
+		}
+		final file = Files.executable(executable, options.env, options.cwd);
+		return file == null ? null : windowsStart(file, args, Files.variable(options.env, "COMSPEC", true) ?? "cmd.exe");
+	}
+
+	public static function windowsStart(file:String, args:Array<String>, comSpec:String):Start {
+		if (~/\.(com|exe)$/i.match(file)) {
+			return {file: file, args: args, verbatim: false};
+		}
+		final launcher = file.split("/").join("\\");
+		// npm's .cmd shims pass their arguments on to another command line, which parses them again.
+		final twice = ~/node_modules[\\\/]\.bin[\\\/][^\\\/]+\.cmd$/i.match(launcher);
+		final line = [escapeMeta(launcher)].concat([for (arg in args) escapeArgument(arg, twice)]).join(" ");
+		return {file: comSpec, args: ["/d", "/s", "/c", '"$line"'], verbatim: true};
+	}
+
+	static function escapeArgument(arg:String, twice:Bool):String {
+		// Backslashes before a quote, and before the closing quote added here, are doubled; the quote is escaped
+		// (https://qntm.org/cmd).
+		var quoted = ~/(\\*)"/g.map(arg, re -> re.matched(1) + re.matched(1) + '\\"');
+		quoted = ~/(\\*)$/.map(quoted, re -> re.matched(1) + re.matched(1));
+		quoted = escapeMeta('"$quoted"');
+		return twice ? escapeMeta(quoted) : quoted;
+	}
+
+	/** cmd.exe's special characters, each escaped with `^`. **/
+	static function escapeMeta(text:String):String {
+		return ~/([()\][%!^"`<>&|;, *?])/g.map(text, re -> "^" + re.matched(1));
 	}
 
 	static function alias(executable:String, aliases:Null<DynamicAccess<String>>):String {

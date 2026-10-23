@@ -1,5 +1,6 @@
 package bridge;
 
+import bridge.lsp.ClientUris;
 import bridge.lsp.Rewrites;
 import bridge.rpc.Connection;
 import bridge.rpc.Message;
@@ -28,6 +29,7 @@ class Bridge implements Router {
 	final server:Connection;
 	final serverProcess:ChildProcessObject;
 	final rewrites:Rewrites;
+	final uris = new ClientUris(process.platform == "win32");
 	final waiting = new Map<String, {resolve:Dynamic->Void, reject:Dynamic->Void}>();
 	var nextId = 1;
 
@@ -57,6 +59,7 @@ class Bridge implements Router {
 
 		client.onMessage = function(message) {
 			Log.message("zed -> bridge", message);
+			uris.learn(message);
 			if (!settle(message)) {
 				rewrites.fromClient(message);
 			}
@@ -86,6 +89,7 @@ class Bridge implements Router {
 	}
 
 	public function toClient(message:Message) {
+		uris.respell(message);
 		Log.message("bridge -> zed", message);
 		client.send(message);
 	}

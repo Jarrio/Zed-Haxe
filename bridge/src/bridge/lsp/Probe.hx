@@ -81,7 +81,7 @@ class Probe {
 	public function realLocations(locations:Array<Dynamic>):Array<Dynamic> {
 		final uri = Uris.fromPath(file);
 		for (location in locations) {
-			if (location.uri == uri) {
+			if (Uris.sameFile(location.uri, uri)) {
 				final start = toOriginal(Documents.offsetAt(text, location.range.start));
 				final end = toOriginal(Documents.offsetAt(text, location.range.end));
 				location.range = {start: Documents.positionAt(original, start), end: Documents.positionAt(original, end)};

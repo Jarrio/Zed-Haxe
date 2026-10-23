@@ -6,6 +6,8 @@ import js.Node.process;
 import sys.FileSystem;
 
 class Files {
+	static final isWindows = process.platform == "win32";
+
 	/** Folders never searched for project files. `haxe_modules` holds git-submodule libraries (gsm). **/
 	public static final ignoredFolders = [
 		".git", ".haxelib", ".zed", "node_modules", "haxe_libraries", "haxe_modules", "Export", "export", "bin", "dump", "out"
@@ -51,12 +53,15 @@ class Files {
 		return result;
 	}
 
-	/** Looks up an executable on `PATH`, like the `which` command. **/
-	public static function which(name:String, env:DynamicAccess<String>):Null<String> {
-		final windows = process.platform == "win32";
-		final pathVariable = env.get(windows ? "Path" : "PATH") ?? env.get("PATH") ?? "";
-		final extensions = windows ? ["", ".exe", ".cmd", ".bat"] : [""];
-		for (dir in pathVariable.split(windows ? ";" : ":")) {
+	/**
+		Looks up an executable on `PATH`, like the `which` command. On Windows a name without an extension
+		gets each of `PATHEXT`'s extensions, as cmd.exe does, so `lime` finds `lime.cmd` and not a shell script.
+	**/
+	public static function which(name:String, env:DynamicAccess<String>, ?windows:Bool):Null<String> {
+		final onWindows = windows ?? isWindows;
+		final pathVariable = variable(env, "PATH", onWindows) ?? "";
+		final extensions = onWindows ? windowsExtensions(name, env) : [""];
+		for (dir in pathVariable.split(onWindows ? ";" : ":")) {
 			if (dir == "") {
 				continue;
 			}
@@ -65,6 +70,43 @@ class Files {
 				if (FileSystem.exists(candidate) && !FileSystem.isDirectory(candidate)) {
 					return candidate;
 				}
+			}
+		}
+		return null;
+	}
+
+	/** The file a command names: `which` for a bare name, else the path itself (on Windows also with `PATHEXT`'s extensions). **/
+	public static function executable(command:String, env:DynamicAccess<String>, cwd:String, ?windows:Bool):Null<String> {
+		final onWindows = windows ?? isWindows;
+		if (command.indexOf("/") < 0 && (!onWindows || command.indexOf("\\") < 0)) {
+			return which(command, env, onWindows);
+		}
+		final path = Path.isAbsolute(command) ? command : Path.join([cwd, command]);
+		final extensions = onWindows ? windowsExtensions(command, env) : [""];
+		for (extension in extensions) {
+			if (FileSystem.exists(path + extension) && !FileSystem.isDirectory(path + extension)) {
+				return path + extension;
+			}
+		}
+		return null;
+	}
+
+	static function windowsExtensions(name:String, env:DynamicAccess<String>):Array<String> {
+		final pathExt = [
+			for (extension in (variable(env, "PATHEXT", true) ?? ".COM;.EXE;.BAT;.CMD").split(";"))
+				if (extension != "") extension.toLowerCase()
+		];
+		return Path.extension(name) != "" ? [""].concat(pathExt) : pathExt;
+	}
+
+	/** An environment variable; on Windows its name is case-insensitive (`Path`, `PATH`). **/
+	public static function variable(env:DynamicAccess<String>, name:String, ?windows:Bool):Null<String> {
+		if (!(windows ?? isWindows) || env.exists(name)) {
+			return env.get(name);
+		}
+		for (key => value in env) {
+			if (key.toUpperCase() == name) {
+				return value;
 			}
 		}
 		return null;
