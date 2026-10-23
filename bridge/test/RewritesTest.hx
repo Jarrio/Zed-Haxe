@@ -116,11 +116,12 @@ class RewritesTest extends utest.Test {
 	function testTypeDefinitionIsAnsweredWhenHaxeFindsNothing(async:Async) {
 		final router = new RecordingRouter();
 		final rewrites = new Rewrites(router, testState());
-		rewrites.fromClient({method: "textDocument/didOpen", params: {textDocument: {uri: "file:///p/src/Main.hx", text: "class Main {\n\tvar s = \"\u{1F600}\".charAt(0);\n}"}}});
-		rewrites.fromClient({id: 7, method: "textDocument/typeDefinition", params: {textDocument: {uri: "file:///p/src/Main.hx"}, position: {line: 1, character: 15}}});
+		final uri = source("Main.hx");
+		rewrites.fromClient({method: "textDocument/didOpen", params: {textDocument: {uri: uri, text: "class Main {\n\tvar s = \"\u{1F600}\".charAt(0);\n}"}}});
+		rewrites.fromClient({id: 7, method: "textDocument/typeDefinition", params: {textDocument: {uri: uri}, position: {line: 1, character: 15}}});
 		final call = Lambda.find(router.server, m -> m.method == "haxe/runMethod" && m.params.method == "display/typeDefinition");
 		Assert.notNull(call);
-		Assert.equals("/p/src/Main.hx", call.params.params.file);
+		Assert.equals(Uris.toPath(uri), call.params.params.file);
 		Assert.equals(13 + 14, call.params.params.offset); // the emoji is two UTF-16 units but one code point
 		Assert.isNull(router.sentToServer("textDocument/typeDefinition")); // the server's handler never answers when Haxe finds nothing
 		// The recording router answers with null, as Haxe does for a function's type: Zed gets an empty list.
@@ -134,34 +135,34 @@ class RewritesTest extends utest.Test {
 		final router = new RecordingRouter();
 		final rewrites = new Rewrites(router, testState());
 		for (name in ["Base.hx", "Child.hx", "layout.xml"]) {
-			rewrites.fromClient({method: "textDocument/didOpen", params: {textDocument: {uri: 'file:///p/src/$name', text: ""}}});
+			rewrites.fromClient({method: "textDocument/didOpen", params: {textDocument: {uri: source(name), text: ""}}});
 		}
 		final compilerCalls = () -> [
 			for (m in router.server)
-				if (m.method == "haxe/runMethod") m.params.method + (m.params.params.file == null ? "" : " " + m.params.params.file)
+				if (m.method == "haxe/runMethod") m.params.method + (m.params.params.file == null ? "" : " " + Path.withoutDirectory(m.params.params.file))
 		];
-		final edit = (name:String) -> rewrites.fromClient({method: "textDocument/didChange", params: {textDocument: {uri: 'file:///p/src/$name'}, contentChanges: [{text: "x"}]}});
-		final hover = (name:String) -> rewrites.fromClient({id: 1, method: "textDocument/hover", params: {textDocument: {uri: 'file:///p/src/$name'}, position: {line: 0, character: 0}}});
+		final edit = (name:String) -> rewrites.fromClient({method: "textDocument/didChange", params: {textDocument: {uri: source(name)}, contentChanges: [{text: "x"}]}});
+		final hover = (name:String) -> rewrites.fromClient({id: 1, method: "textDocument/hover", params: {textDocument: {uri: source(name)}, position: {line: 0, character: 0}}});
 
 		// Opening files makes the server check the open files from disk: each is re-read when next used, once.
 		router.server.resize(0);
 		edit("Child.hx");
 		hover("Child.hx");
-		Assert.same(["server/invalidate /p/src/Child.hx"], compilerCalls());
+		Assert.same(["server/invalidate Child.hx"], compilerCalls());
 
 		// Saving a Haxe file turns file checks back on, and the same happens again.
-		rewrites.fromClient({method: "textDocument/didSave", params: {textDocument: {uri: "file:///p/src/Base.hx"}}});
+		rewrites.fromClient({method: "textDocument/didSave", params: {textDocument: {uri: source("Base.hx")}}});
 		hover("Child.hx");
-		Assert.same(["server/invalidate /p/src/Child.hx", "server/configure", "server/invalidate /p/src/Child.hx"], compilerCalls());
+		Assert.same(["server/invalidate Child.hx", "server/configure", "server/invalidate Child.hx"], compilerCalls());
 
 		// A Haxe file changed on disk does the same; other files change nothing.
 		router.server.resize(0);
-		rewrites.fromClient({method: "workspace/didChangeWatchedFiles", params: {changes: [{uri: "file:///p/assets/logo.png", type: 2}]}});
+		rewrites.fromClient({method: "workspace/didChangeWatchedFiles", params: {changes: [{uri: Uris.fromPath(Path.join([projectDir, "assets", "logo.png"])), type: 2}]}});
 		edit("Child.hx");
 		Assert.same([], compilerCalls());
-		rewrites.fromClient({method: "workspace/didChangeWatchedFiles", params: {changes: [{uri: "file:///p/src/Gen.hx", type: 2}]}});
+		rewrites.fromClient({method: "workspace/didChangeWatchedFiles", params: {changes: [{uri: source("Gen.hx"), type: 2}]}});
 		edit("Base.hx");
-		Assert.same(["server/configure", "server/invalidate /p/src/Base.hx"], compilerCalls());
+		Assert.same(["server/configure", "server/invalidate Base.hx"], compilerCalls());
 	}
 
 	@:timeout(15000)
@@ -353,6 +354,14 @@ class RewritesTest extends utest.Test {
 			params: {rootUri: Uris.fromPath(dir), capabilities: {}, initializationOptions: {project: project}}
 		});
 		return rewrites;
+	}
+
+	/** A project folder that needn't exist, spelled as on this system. **/
+	static final projectDir = js.Node.process.platform == "win32" ? "C:/p" : "/p";
+
+	/** The URI of `projectDir/src/name`. **/
+	static function source(name:String):String {
+		return Uris.fromPath(Path.join([projectDir, "src", name]));
 	}
 
 	static function testState():State {

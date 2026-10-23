@@ -29,7 +29,7 @@ class ToolchainTest extends utest.Test {
 		final root = haxeManager();
 		final notes = [];
 		final choice = new HaxeManagerResolver().resolve(context(root, {version: "4.3.7"}), notes);
-		Assert.equals(Path.join([root, "versions", "4.3.7", "haxe"]), choice?.path);
+		Assert.equals(Fixture.launcher(Path.join([root, "versions", "4.3.7", "haxe"])), choice?.path);
 		Assert.equals(Path.join([root, "versions", "4.3.7", "std"]), choice?.env?.get("HAXE_STD_PATH"));
 
 		Assert.isNull(new HaxeManagerResolver().resolve(context(root, {version: "9.9.9"}), notes));
@@ -38,14 +38,14 @@ class ToolchainTest extends utest.Test {
 
 	function testLixUsesProjectShim() {
 		final dir = Fixture.create({".haxerc": '{"version": "4.3.7"}'});
-		final shim = Fixture.script(dir, "node_modules/.bin/haxe", "echo 4.3.7");
+		final shim = Fixture.script(dir, "node_modules/.bin/haxe", "console.log('4.3.7')");
 		Assert.equals(shim, new LixResolver().resolve(context(dir, {version: "4.3.7"}), [])?.path);
 		Assert.isNull(new LixResolver().resolve(context(dir, null), []));
 	}
 
 	function testOrderAndOverrides() {
 		final dir = Fixture.create({});
-		final haxe = Fixture.script(dir, "bin/haxe", "echo 4.3.7");
+		final haxe = Fixture.script(dir, "bin/haxe", "console.log('4.3.7')");
 		final ctx = context(dir, null, "/from/provider/haxe");
 
 		// The provider's Haxe (e.g. Ceramic's) wins by default...
@@ -75,7 +75,7 @@ class ToolchainTest extends utest.Test {
 	function testHaxe3VersionIsRead() {
 		final dir = Fixture.create({});
 		// Haxe 3 rejects --version and prints -version on stderr.
-		final haxe = Fixture.script(dir, "bin/haxe", 'if [ "$$1" = "-version" ]; then echo 3.4.7 >&2; else exit 1; fi');
+		final haxe = Fixture.script(dir, "bin/haxe", "if (process.argv[2] == '-version') console.error('3.4.7'); else process.exit(1);");
 		final resolved = Toolchain.resolve(context(dir, null, null), {haxePath: haxe});
 		Assert.equals("3.4.7", resolved.version);
 		Assert.equals(3, resolved.major);
@@ -83,7 +83,7 @@ class ToolchainTest extends utest.Test {
 
 	function testSiblingStdIsUsed() {
 		final dir = Fixture.create({"haxe/std/StdTypes.hx": ""});
-		final haxe = Fixture.script(dir, "haxe/haxe", "echo 4.3.7");
+		final haxe = Fixture.script(dir, "haxe/haxe", "console.log('4.3.7')");
 		final result = Toolchain.resolve(context(dir, null), {haxePath: haxe});
 		Assert.equals(Path.join([dir, "haxe", "std"]), result.env.get("HAXE_STD_PATH"));
 	}
@@ -95,8 +95,8 @@ class ToolchainTest extends utest.Test {
 			"versions/5.0.0-preview.1+abc1234/std/StdTypes.hx": "",
 			"releases/haxe_20261019195531_066bd83/std/StdTypes.hx": ""
 		});
-		Fixture.script(root, "bin/hx", "true");
-		Fixture.script(root, "versions/4.3.7/haxe", "echo 4.3.7");
+		Fixture.script(root, "bin/hx", "");
+		Fixture.script(root, "versions/4.3.7/haxe", "console.log('4.3.7')");
 		return root;
 	}
 

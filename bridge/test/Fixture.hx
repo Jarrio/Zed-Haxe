@@ -23,13 +23,26 @@ class Fixture {
 		return dir;
 	}
 
-	/** Makes `dir/name` an executable shell script. **/
-	public static function script(dir:String, name:String, body:String):String {
+	/**
+		Makes `dir/name` a fake executable that runs `js` with Node: a shell script, or `name.cmd` on Windows.
+		Returns its path (see `launcher`).
+	**/
+	public static function script(dir:String, name:String, js:String):String {
 		final path = Path.join([dir, name]);
 		FileSystem.createDirectory(Path.directory(path));
-		sys.io.File.saveContent(path, '#!/bin/sh\n$body\n');
-		Fs.chmodSync(path, "755");
-		return path;
+		sys.io.File.saveContent('${path}.script.js', js);
+		if (process.platform == "win32") {
+			sys.io.File.saveContent(launcher(path), '@"${process.execPath}" "${path}.script.js" %*\r\n');
+		} else {
+			sys.io.File.saveContent(path, '#!/bin/sh\nexec "${process.execPath}" "${path}.script.js" "$$@"\n');
+			Fs.chmodSync(path, "755");
+		}
+		return launcher(path);
+	}
+
+	/** The file `script` writes for `path`. **/
+	public static function launcher(path:String):String {
+		return process.platform == "win32" ? '$path.cmd' : path;
 	}
 
 	public static function context(dir:String, ?settings:ProjectSettings):ProjectContext {

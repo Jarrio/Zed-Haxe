@@ -2,6 +2,7 @@ import bridge.lsp.ClientUris;
 import bridge.util.Exec;
 import bridge.util.Files;
 import bridge.util.Uris;
+import haxe.io.Path;
 import utest.Assert;
 
 /** What the bridge does differently on Windows, with Windows switched on so it runs on any system. **/
@@ -10,17 +11,21 @@ class WindowsTest extends utest.Test {
 		final dir = Fixture.create({"lime": "", "lime.cmd": "", "haxe.exe": ""});
 		final env = {Path: dir, PATHEXT: ".COM;.EXE;.BAT;.CMD"};
 		// A shell script without an extension (Git for Windows puts some on PATH) can't be started.
-		Assert.equals('$dir/lime.cmd', Files.which("lime", env, true));
-		Assert.equals('$dir/haxe.exe', Files.which("haxe", env, true));
-		Assert.equals('$dir/lime.cmd', Files.which("lime.cmd", env, true));
+		Assert.equals(Path.join([dir, "lime.cmd"]), Files.which("lime", env, true));
+		Assert.equals(Path.join([dir, "haxe.exe"]), Files.which("haxe", env, true));
+		Assert.equals(Path.join([dir, "lime.cmd"]), Files.which("lime.cmd", env, true));
 		Assert.isNull(Files.which("ceramic", env, true));
-		Assert.equals('$dir/lime', Files.which("lime", {PATH: dir}, false));
+		Assert.equals(Path.join([dir, "haxe.exe"]), Files.executableIn(dir, "haxe", true));
+		Assert.equals(Path.join([dir, "lime.cmd"]), Files.executableIn(dir, "lime", true));
+		if (js.Node.process.platform != "win32") {
+			Assert.equals(Path.join([dir, "lime"]), Files.which("lime", {PATH: dir}, false));
+		}
 	}
 
 	function testExecutableResolvesPaths() {
 		final dir = Fixture.create({"tools/run.cmd": ""});
-		Assert.equals('$dir/tools/run.cmd', Files.executable("tools/run", {}, dir, true));
-		Assert.equals('$dir/tools/run.cmd', Files.executable('$dir/tools/run', {}, "/elsewhere", true));
+		Assert.equals(Path.join([dir, "tools/run.cmd"]), Files.executable("tools/run", {}, dir, true));
+		Assert.equals(Path.join([dir, "tools/run.cmd"]), Files.executable('$dir/tools/run', {}, "/elsewhere", true));
 		Assert.isNull(Files.executable("tools/missing", {}, dir, true));
 	}
 

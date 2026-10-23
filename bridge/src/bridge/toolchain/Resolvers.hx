@@ -30,12 +30,9 @@ class LixResolver implements ToolchainResolver {
 			return null;
 		}
 		for (root in [ctx.projectRoot, ctx.workspaceRoot]) {
-			final bin = Path.join([root, "node_modules", ".bin"]);
-			for (name in ["haxe", "haxe.cmd"]) {
-				final path = Path.join([bin, name]);
-				if (FileSystem.exists(path)) {
-					return {path: path};
-				}
+			final shim = Files.executableIn(Path.join([root, "node_modules", ".bin"]), "haxe");
+			if (shim != null) {
+				return {path: shim};
 			}
 		}
 		return null;

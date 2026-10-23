@@ -81,7 +81,7 @@ class Files {
 		if (command.indexOf("/") < 0 && (!onWindows || command.indexOf("\\") < 0)) {
 			return which(command, env, onWindows);
 		}
-		final path = Path.isAbsolute(command) ? command : Path.join([cwd, command]);
+		final path = Path.isAbsolute(command) ? Path.normalize(command) : Path.join([cwd, command]);
 		final extensions = onWindows ? windowsExtensions(command, env) : [""];
 		for (extension in extensions) {
 			if (FileSystem.exists(path + extension) && !FileSystem.isDirectory(path + extension)) {
@@ -112,9 +112,13 @@ class Files {
 		return null;
 	}
 
-	/** Returns `dir/name` or `dir/name.exe`, whichever exists. **/
-	public static function executableIn(dir:String, name:String):Null<String> {
-		for (candidate in [Path.join([dir, name]), Path.join([dir, name + ".exe"])]) {
+	/**
+		Returns `dir/name` or `dir/name.exe`, whichever exists. On Windows, `name` with each of `PATHEXT`'s
+		extensions instead (`haxe.exe`, or lix's `haxe.cmd` rather than the shell script next to it).
+	**/
+	public static function executableIn(dir:String, name:String, ?windows:Bool):Null<String> {
+		final extensions = (windows ?? isWindows) ? windowsExtensions(name, process.env) : ["", ".exe"];
+		for (candidate in [for (extension in extensions) Path.join([dir, name + extension])]) {
 			if (FileSystem.exists(candidate) && !FileSystem.isDirectory(candidate)) {
 				return candidate;
 			}

@@ -5243,28 +5243,14 @@ class bridge_toolchain_LixResolver {
 			return null;
 		}
 		let root = ctx.projectRoot;
-		let bin = haxe_io_Path.join([root,"node_modules",".bin"]);
-		let name = "haxe";
-		let path = haxe_io_Path.join([bin,name]);
-		if(sys_FileSystem.exists(path)) {
-			return { path : path};
-		}
-		let name1 = "haxe.cmd";
-		let path1 = haxe_io_Path.join([bin,name1]);
-		if(sys_FileSystem.exists(path1)) {
-			return { path : path1};
+		let shim = bridge_util_Files.executableIn(haxe_io_Path.join([root,"node_modules",".bin"]),"haxe");
+		if(shim != null) {
+			return { path : shim};
 		}
 		let root1 = ctx.workspaceRoot;
-		let bin1 = haxe_io_Path.join([root1,"node_modules",".bin"]);
-		let name2 = "haxe";
-		let path2 = haxe_io_Path.join([bin1,name2]);
-		if(sys_FileSystem.exists(path2)) {
-			return { path : path2};
-		}
-		let name3 = "haxe.cmd";
-		let path3 = haxe_io_Path.join([bin1,name3]);
-		if(sys_FileSystem.exists(path3)) {
-			return { path : path3};
+		let shim1 = bridge_util_Files.executableIn(haxe_io_Path.join([root1,"node_modules",".bin"]),"haxe");
+		if(shim1 != null) {
+			return { path : shim1};
 		}
 		return null;
 	}
@@ -5725,7 +5711,7 @@ class bridge_util_Files {
 		if(command.indexOf("/") < 0 && (!onWindows || command.indexOf("\\") < 0)) {
 			return bridge_util_Files.which(command,env,onWindows);
 		}
-		let path = haxe_io_Path.isAbsolute(command) ? command : haxe_io_Path.join([cwd,command]);
+		let path = haxe_io_Path.isAbsolute(command) ? haxe_io_Path.normalize(command) : haxe_io_Path.join([cwd,command]);
 		let extensions = onWindows ? bridge_util_Files.windowsExtensions(command,env) : [""];
 		let _g = 0;
 		while(_g < extensions.length) {
@@ -5777,14 +5763,24 @@ class bridge_util_Files {
 		}
 		return null;
 	}
-	static executableIn(dir,name) {
-		let candidate = haxe_io_Path.join([dir,name]);
-		if(sys_FileSystem.exists(candidate) && !sys_FileSystem.isDirectory(candidate)) {
-			return candidate;
+	static executableIn(dir,name,windows) {
+		let tmp = windows;
+		let extensions = (tmp != null ? tmp : bridge_util_Files.isWindows) ? bridge_util_Files.windowsExtensions(name,process.env) : ["",".exe"];
+		let _g = 0;
+		let _g1 = [];
+		let _g2 = 0;
+		while(_g2 < extensions.length) {
+			let extension = extensions[_g2];
+			++_g2;
+			_g1.push(haxe_io_Path.join([dir,name + extension]));
 		}
-		let candidate1 = haxe_io_Path.join([dir,name + ".exe"]);
-		if(sys_FileSystem.exists(candidate1) && !sys_FileSystem.isDirectory(candidate1)) {
-			return candidate1;
+		let _g3 = _g1;
+		while(_g < _g3.length) {
+			let candidate = _g3[_g];
+			++_g;
+			if(sys_FileSystem.exists(candidate) && !sys_FileSystem.isDirectory(candidate)) {
+				return candidate;
+			}
 		}
 		return null;
 	}

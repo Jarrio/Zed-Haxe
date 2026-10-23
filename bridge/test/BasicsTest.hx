@@ -39,7 +39,8 @@ class BasicsTest extends utest.Test {
 			{lib: "absent", metadata: "docs/my.defines.json"},
 			{lib: "mylib", metadata: "docs/missing.json"}
 		], ["-lib", "mylib"], dir, Path.join([dir, "builtin"]));
-		Assert.same(["--macro", 'haxe.macro.Compiler.registerDefinesDescriptionFile(\'$dir/docs/my.defines.json\', \'mylib\')'], macros);
+		final file = Path.join([dir, "docs/my.defines.json"]);
+		Assert.same(["--macro", 'haxe.macro.Compiler.registerDefinesDescriptionFile(\'$file\', \'mylib\')'], macros);
 	}
 
 	function testBuiltInDocPacksAreWrittenOut() {

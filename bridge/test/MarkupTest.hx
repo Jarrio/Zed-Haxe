@@ -5,6 +5,7 @@ import bridge.markup.MarkupProvider;
 import bridge.markup.XmlCursor;
 import bridge.project.Hxml;
 import bridge.util.HaxeTypes;
+import bridge.util.Uris;
 import haxe.io.Path;
 import js.lib.Promise;
 import utest.Assert;
@@ -233,7 +234,7 @@ class MarkupTest extends utest.Test {
 
 		// Haxe's answer for `onClick` points into the probe's text: line 4 there is line 3 in the file.
 		final inProbe = probe.text.indexOf("onClick");
-		final location = {uri: "file:///p/Windows.hx", range: {start: bridge.lsp.Documents.positionAt(probe.text, inProbe), end: bridge.lsp.Documents.positionAt(probe.text, inProbe + 7)}};
+		final location = {uri: Uris.fromPath("/p/Windows.hx"), range: {start: bridge.lsp.Documents.positionAt(probe.text, inProbe), end: bridge.lsp.Documents.positionAt(probe.text, inProbe + 7)}};
 		final real:Dynamic = probe.realLocations([location])[0];
 		Assert.same({line: 3, character: 10}, real.range.start);
 		Assert.same({line: 3, character: 17}, real.range.end);
@@ -250,7 +251,7 @@ class MarkupTest extends utest.Test {
 		Assert.same([], HaxeItems.locations(null));
 		Assert.same([], HaxeItems.locations([null])); // what Haxe answers for the type of a function
 		final range = {start: {line: 1, character: 0}, end: {line: 1, character: 4}};
-		Assert.same([{uri: "file:///p/A.hx", range: range}], HaxeItems.locations([{file: "/p/A.hx", range: range}]));
+		Assert.same([{uri: Uris.fromPath("/p/A.hx"), range: range}], HaxeItems.locations([{file: "/p/A.hx", range: range}]));
 	}
 
 	function testEnclosingClass() {
