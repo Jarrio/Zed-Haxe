@@ -21,8 +21,6 @@
 ((Regexp) @injection.content
   (#set! injection.language "regex"))
 
-(interpolation) @haxe
-
 (comment
   (block_comment) @injection.content
   (#set! injection.language "jsdoc"))

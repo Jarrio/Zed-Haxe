@@ -8,11 +8,12 @@ repository = "https://github.com/Frixuu/Zed-Haxe"
 
 [grammars.haxe]
 repository = "https://github.com/tong/tree-sitter-haxe"
-commit = "cd22e75fd9e80cc1752854be1a3aac22b08f82c7"
+# v0.6.0
+rev = "a374f099830aef922e3bbc95464cf596acf9a9cf"
 
 [grammars.hxml]
 repository = "https://github.com/Frixuu/tree-sitter-hxml"
-commit = "6199e87f50afedab695de1c835430da424ed4ca9"
+rev = "6199e87f50afedab695de1c835430da424ed4ca9"
 
 [language_servers.haxe-language-server]
 name = "Haxe Language Server"
