@@ -18,6 +18,12 @@ import js.node.child_process.ChildProcess as ChildProcessObject;
 class Bridge implements Router {
 	static inline final idPrefix = "haxe-zed:";
 
+	/**
+		Runs before the server, through `node -e`. If the bridge goes away, even killed outright, the IPC
+		channel to it closes, and this ends the server's process group, which includes the Haxe it started.
+	**/
+	static final serverGuard = 'process.on("disconnect", () => { try { process.kill(-process.pid, "SIGTERM"); } catch (_) {} process.exit(0); }); require(process.argv[1]);';
+
 	final client:Connection;
 	final server:Connection;
 	final serverProcess:ChildProcessObject;
@@ -27,7 +33,9 @@ class Bridge implements Router {
 
 	public function new(serverPath:String) {
 		// --no-deprecation hides Node's warning about the server starting Haxe through a shell.
-		serverProcess = ChildProcess.spawn(process.execPath, ["--no-deprecation", serverPath], cast {stdio: ["pipe", "pipe", "inherit"]});
+		// Its own process group (not on Windows) lets one signal end the server and its Haxe together.
+		serverProcess = ChildProcess.spawn(process.execPath, ["--no-deprecation", "-e", serverGuard, serverPath],
+			cast {stdio: ["pipe", "pipe", "inherit", "ipc"], detached: process.platform != "win32"});
 		serverProcess.on("error", function(error) {
 			Log.info('could not start the language server ($serverPath): $error');
 			process.exit(1);
@@ -35,7 +43,13 @@ class Bridge implements Router {
 		serverProcess.on("exit", function(code:Null<Int>, _) {
 			process.exit(code ?? 1);
 		});
-		process.stdin.on("end", () -> serverProcess.kill());
+		process.stdin.on("end", stopServer);
+		for (signal in ["SIGTERM", "SIGINT", "SIGHUP"]) {
+			process.on(signal, function() {
+				stopServer();
+				process.exit(0);
+			});
+		}
 
 		client = new Connection(process.stdin, process.stdout);
 		server = new Connection(serverProcess.stdout, serverProcess.stdin);
@@ -53,6 +67,17 @@ class Bridge implements Router {
 				rewrites.fromServer(message);
 			}
 		};
+	}
+
+	/** Ends the server and the Haxe it started. **/
+	function stopServer() {
+		try {
+			if (process.platform == "win32") {
+				serverProcess.kill();
+			} else {
+				process.kill(-serverProcess.pid, "SIGTERM");
+			}
+		} catch (_) {}
 	}
 
 	public function toServer(message:Message) {
