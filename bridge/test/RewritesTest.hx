@@ -106,7 +106,27 @@ class RewritesTest extends utest.Test {
 		rewrites.fromServer({method: "haxe/didChangeRequestQueue", params: {queue: []}});
 		rewrites.fromServer({method: "haxe/cacheBuildFailed"});
 		Assert.equals(1, router.client.length);
-		Assert.equals("window/showMessage", router.client[0].method);
+		// With a button, so Zed keeps it on screen instead of hiding it after five seconds.
+		Assert.equals("window/showMessageRequest", router.client[0].method);
+		Assert.same([{title: "OK"}], router.client[0].params.actions);
+	}
+
+	@:timeout(5000)
+	function testTypeDefinitionIsAnsweredWhenHaxeFindsNothing(async:Async) {
+		final router = new RecordingRouter();
+		final rewrites = new Rewrites(router, testState());
+		rewrites.fromClient({method: "textDocument/didOpen", params: {textDocument: {uri: "file:///p/src/Main.hx", text: "class Main {\n\tvar s = \"\u{1F600}\".charAt(0);\n}"}}});
+		rewrites.fromClient({id: 7, method: "textDocument/typeDefinition", params: {textDocument: {uri: "file:///p/src/Main.hx"}, position: {line: 1, character: 15}}});
+		final call = router.sentToServer("haxe/runMethod");
+		Assert.equals("display/typeDefinition", call.params.method);
+		Assert.equals("/p/src/Main.hx", call.params.params.file);
+		Assert.equals(13 + 14, call.params.params.offset); // the emoji is two UTF-16 units but one code point
+		Assert.isNull(router.sentToServer("textDocument/typeDefinition")); // the server's handler never answers when Haxe finds nothing
+		// The recording router answers with null, as Haxe does for a function's type: Zed gets an empty list.
+		waitFor(() -> router.client.length > 0, function() {
+			Assert.same({id: 7, result: []}, router.client[0]);
+			async.done();
+		});
 	}
 
 	function testChangedHaxeFilesRefreshTheCompilerCache() {

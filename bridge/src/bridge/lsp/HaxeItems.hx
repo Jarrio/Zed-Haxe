@@ -130,6 +130,7 @@ class HaxeItems {
 	/** LSP locations for a `display/definition` result. **/
 	public static function locations(result:Dynamic):Array<Dynamic> {
 		final found:Array<Dynamic> = result ?? [];
-		return [for (location in found) if (location.file != null) {uri: Rewrites.pathToUri(location.file), range: location.range}];
+		// Haxe answers `[null]` when there is nothing to go to, e.g. the type of a function.
+		return [for (location in found) if (location != null && location.file != null) {uri: Rewrites.pathToUri(location.file), range: location.range}];
 	}
 }

@@ -217,6 +217,13 @@ class MarkupTest extends utest.Test {
 		Assert.equals(0, Ranking.ofDisplayItem({kind: "Local", args: {name: "_x"}}, false));
 	}
 
+	function testLocationsSkipNothing() {
+		Assert.same([], HaxeItems.locations(null));
+		Assert.same([], HaxeItems.locations([null])); // what Haxe answers for the type of a function
+		final range = {start: {line: 1, character: 0}, end: {line: 1, character: 4}};
+		Assert.same([{uri: "file:///p/A.hx", range: range}], HaxeItems.locations([{file: "/p/A.hx", range: range}]));
+	}
+
 	function testEnclosingClass() {
 		final text = "class A {\n}\nclass B extends A {\n\tfunction f() { this. }\n}";
 		Assert.equals("B", Ranking.enclosingClass(text, text.indexOf("this.")));

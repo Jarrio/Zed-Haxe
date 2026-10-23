@@ -10,6 +10,9 @@ import js.Node.process;
 class Main {
 	static function main() {
 		Log.install();
+		// A bug in one of the bridge's own handlers shouldn't end the language server for the whole session.
+		process.on("uncaughtException", (error:Dynamic) -> Log.info('internal error: ${error?.stack ?? error}'));
+		process.on("unhandledRejection", (reason:Dynamic) -> Log.info('internal error: ${reason?.stack ?? reason}'));
 		final args = process.argv.slice(2);
 		var serverPath:Null<String> = null;
 		var i = 0;

@@ -112,7 +112,7 @@ class ServerCompiler implements Compiler {
 	}
 
 	/** Haxe counts offsets in Unicode code points; JavaScript strings index UTF-16 units. **/
-	static function codePoints(text:String, offset:Int):Int {
+	public static function codePoints(text:String, offset:Int):Int {
 		var count = offset;
 		for (i in 0...Std.int(Math.min(offset, text.length))) {
 			final unit = text.charCodeAt(i);

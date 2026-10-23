@@ -389,6 +389,14 @@ bridge_Log.__name__ = "bridge.Log";
 class bridge_Main {
 	static main() {
 		bridge_Log.install();
+		process.on("uncaughtException",function(error) {
+			let tmp = error != null ? error.stack : null;
+			bridge_Log.info("internal error: " + Std.string(tmp != null ? tmp : error));
+		});
+		process.on("unhandledRejection",function(reason) {
+			let tmp = reason != null ? reason.stack : null;
+			bridge_Log.info("internal error: " + Std.string(tmp != null ? tmp : reason));
+		});
 		let args = process.argv.slice(2);
 		let serverPath = null;
 		let i = 0;
@@ -999,7 +1007,7 @@ class bridge_lsp_HaxeItems {
 		while(_g1 < found1.length) {
 			let location = found1[_g1];
 			++_g1;
-			if(location.file != null) {
+			if(location != null && location.file != null) {
 				_g.push({ uri : bridge_lsp_Rewrites.pathToUri(location.file), range : location.range});
 			}
 		}
@@ -1007,6 +1015,24 @@ class bridge_lsp_HaxeItems {
 	}
 }
 bridge_lsp_HaxeItems.__name__ = "bridge.lsp.HaxeItems";
+class bridge_lsp_Locations {
+	static handle(bridge,documents,message,haxeMethod) {
+		let uri = message.params.textDocument.uri;
+		let text = documents.text(uri);
+		let path = bridge_lsp_Rewrites.uriToPath(uri);
+		if(text == null || path == null) {
+			bridge.toServer(message);
+			return;
+		}
+		let offset = bridge_lsp_ServerCompiler.codePoints(text,bridge_lsp_Documents.offsetAt(text,message.params.position));
+		bridge.requestServer("haxe/runMethod",{ method : haxeMethod, params : { file : path, contents : text, offset : offset}}).then(function(result) {
+			bridge.replyToClient(message.id,bridge_lsp_HaxeItems.locations(result));
+		},function(_) {
+			bridge.replyToClient(message.id,[]);
+		});
+	}
+}
+bridge_lsp_Locations.__name__ = "bridge.lsp.Locations";
 class bridge_lsp_MarkupFeature {
 	constructor(bridge,documents,displayArgs,workspaceRoot,privateMembers) {
 		this.snippets = false;
@@ -1927,10 +1953,16 @@ class bridge_lsp_Rewrites {
 					this.bridge.toServer(message);
 				}
 				break;
+			case "textDocument/implementation":
+				bridge_lsp_Locations.handle(this.bridge,this.documents,message,"display/implementation");
+				break;
 			case "textDocument/definition":case "textDocument/signatureHelp":
 				if(!(this.markupEnabled() && this.markup.handleHaxe(message))) {
 					this.bridge.toServer(message);
 				}
+				break;
+			case "textDocument/typeDefinition":
+				bridge_lsp_Locations.handle(this.bridge,this.documents,message,"display/typeDefinition");
 				break;
 			case "workspace/didChangeConfiguration":
 				this.onDidChangeConfiguration(message);
@@ -2692,7 +2724,9 @@ class bridge_lsp_Rewrites {
 		};
 	}
 	showMessage(type,message) {
-		this.bridge.notifyClient("window/showMessage",{ type : type, message : message});
+		this.bridge.requestClient("window/showMessageRequest",{ type : type, message : message, actions : [{ title : "OK"}]}).then(null,function(_) {
+			return null;
+		});
 	}
 	flushWarnings() {
 		if(!this.initialized || this.warnings.length == 0) {

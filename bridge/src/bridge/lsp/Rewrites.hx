@@ -147,6 +147,10 @@ class Rewrites {
 					rememberCompletion(message);
 				}
 				bridge.toServer(message);
+			case "textDocument/typeDefinition":
+				Locations.handle(bridge, documents, message, "display/typeDefinition");
+			case "textDocument/implementation":
+				Locations.handle(bridge, documents, message, "display/implementation");
 			case "completionItem/resolve" if (message.params.data?.haxeZed == true):
 				// One of the bridge's own items: markup attributes get their docs now, the rest are complete.
 				markup.resolveItem(message);
@@ -788,8 +792,12 @@ class Rewrites {
 		return () -> bridge.notifyClient("$/progress", {token: token, value: {kind: "end"}});
 	}
 
+	/**
+		Zed hides a plain `window/showMessage` after five seconds (`global_lsp_settings.notifications.dismiss_timeout_ms`),
+		too short for a warning that asks you to do something. One with a button stays until it is clicked.
+	**/
 	function showMessage(type:MessageType, message:String) {
-		bridge.notifyClient("window/showMessage", {type: type, message: message});
+		bridge.requestClient("window/showMessageRequest", {type: type, message: message, actions: [{title: "OK"}]}).then(null, _ -> null);
 	}
 
 	/** Warnings collected before `initialized` are shown afterwards, all at once. **/

@@ -18,7 +18,7 @@ const checks = checksFile ? JSON.parse(fs.readFileSync(checksFile, "utf8")) : []
 
 const child = spawn(process.execPath, [bridgeJs, "--server", process.env.SERVER_JS], { cwd: projectDir });
 child.stderr.on("data", (d) => {
-  for (const line of d.toString().split("\n")) if (line.includes("[haxe-zed]")) console.log("  " + line.trim());
+  for (const line of d.toString().split("\n")) if (line.includes("[haxe-zed]") || (process.env.SHOW_STDERR && line.trim())) console.log("  " + line.trim());
 });
 
 let buffer = Buffer.alloc(0);

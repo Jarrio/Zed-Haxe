@@ -160,7 +160,7 @@ Picking one switches without a restart, and is remembered for the project. `proj
 `lsp_command_selector::Toggle` in your keymap.
 
 **Tasks:** the extension writes the project's build and run commands to `.zed/tasks.json`, so
-`task: spawn` and `task: rerun` offer them, the current target's first:
+`task: spawn` and `task: rerun` offer them (Zed sorts the list itself):
 
 | Project | Tasks |
 |---|---|
