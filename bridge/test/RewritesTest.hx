@@ -118,8 +118,8 @@ class RewritesTest extends utest.Test {
 		final rewrites = new Rewrites(router, testState());
 		rewrites.fromClient({method: "textDocument/didOpen", params: {textDocument: {uri: "file:///p/src/Main.hx", text: "class Main {\n\tvar s = \"\u{1F600}\".charAt(0);\n}"}}});
 		rewrites.fromClient({id: 7, method: "textDocument/typeDefinition", params: {textDocument: {uri: "file:///p/src/Main.hx"}, position: {line: 1, character: 15}}});
-		final call = router.sentToServer("haxe/runMethod");
-		Assert.equals("display/typeDefinition", call.params.method);
+		final call = Lambda.find(router.server, m -> m.method == "haxe/runMethod" && m.params.method == "display/typeDefinition");
+		Assert.notNull(call);
 		Assert.equals("/p/src/Main.hx", call.params.params.file);
 		Assert.equals(13 + 14, call.params.params.offset); // the emoji is two UTF-16 units but one code point
 		Assert.isNull(router.sentToServer("textDocument/typeDefinition")); // the server's handler never answers when Haxe finds nothing
@@ -140,17 +140,28 @@ class RewritesTest extends utest.Test {
 			for (m in router.server)
 				if (m.method == "haxe/runMethod") m.params.method + (m.params.params.file == null ? "" : " " + m.params.params.file)
 		];
+		final edit = (name:String) -> rewrites.fromClient({method: "textDocument/didChange", params: {textDocument: {uri: 'file:///p/src/$name'}, contentChanges: [{text: "x"}]}});
+		final hover = (name:String) -> rewrites.fromClient({id: 1, method: "textDocument/hover", params: {textDocument: {uri: 'file:///p/src/$name'}, position: {line: 0, character: 0}}});
 
-		// Saving one Haxe file: file checks back on, and the other open Haxe documents re-typed.
+		// Opening files makes the server check the open files from disk: each is re-read when next used, once.
+		router.server.resize(0);
+		edit("Child.hx");
+		hover("Child.hx");
+		Assert.same(["server/invalidate /p/src/Child.hx"], compilerCalls());
+
+		// Saving a Haxe file turns file checks back on, and the same happens again.
 		rewrites.fromClient({method: "textDocument/didSave", params: {textDocument: {uri: "file:///p/src/Base.hx"}}});
-		Assert.same(["server/configure", "server/invalidate /p/src/Child.hx"], compilerCalls());
+		hover("Child.hx");
+		Assert.same(["server/invalidate /p/src/Child.hx", "server/configure", "server/invalidate /p/src/Child.hx"], compilerCalls());
 
-		// The same for a Haxe file changed on disk, even one that isn't open; other files change nothing.
+		// A Haxe file changed on disk does the same; other files change nothing.
 		router.server.resize(0);
 		rewrites.fromClient({method: "workspace/didChangeWatchedFiles", params: {changes: [{uri: "file:///p/assets/logo.png", type: 2}]}});
+		edit("Child.hx");
 		Assert.same([], compilerCalls());
 		rewrites.fromClient({method: "workspace/didChangeWatchedFiles", params: {changes: [{uri: "file:///p/src/Gen.hx", type: 2}]}});
-		Assert.same(["server/configure", "server/invalidate /p/src/Base.hx", "server/invalidate /p/src/Child.hx"], compilerCalls());
+		edit("Base.hx");
+		Assert.same(["server/configure", "server/invalidate /p/src/Base.hx"], compilerCalls());
 	}
 
 	@:timeout(15000)

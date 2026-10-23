@@ -79,6 +79,11 @@ class State {
 
 	static function stateDir():String {
 		final env = process.env;
+		// Tests point this at a folder of their own.
+		final explicit = env.get("HAXE_ZED_STATE_DIR");
+		if (explicit != null && explicit != "") {
+			return explicit;
+		}
 		final home = env.get("HOME") ?? env.get("USERPROFILE") ?? ".";
 		return switch process.platform {
 			case "win32": Path.join([env.get("LOCALAPPDATA") ?? home, "haxe-zed"]);

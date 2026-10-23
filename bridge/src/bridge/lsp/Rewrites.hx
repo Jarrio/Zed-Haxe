@@ -66,6 +66,9 @@ class Rewrites {
 			fromClientForMarkupFile(message, uri);
 			return;
 		}
+		if (uri != null && (message.id != null || message.method == "textDocument/didChange")) {
+			serverCache.beforeUse(uri);
+		}
 		switch message.method {
 			case "initialize":
 				onInitialize(message);
@@ -79,6 +82,7 @@ class Rewrites {
 			case "textDocument/didOpen":
 				documents.open(message.params.textDocument.uri, message.params.textDocument.text);
 				bridge.toServer(message);
+				serverCache.documentOpened();
 				// VS Code sends this on every tab switch; the server uses it for diagnostics and `package` completion.
 				bridge.notifyServer("haxe/didChangeActiveTextEditor", {uri: message.params.textDocument.uri});
 			case "textDocument/didChange":
@@ -161,6 +165,12 @@ class Rewrites {
 				client.showMessage(Warning, message.params.haxe4Preview == true
 					? 'Haxe ${message.params.version} is a Haxe 4 preview, which haxe-language-server only partly supports. Use a Haxe 4 release or newer.'
 					: 'Haxe ${message.params.version} is older than Haxe 4, so haxe-language-server falls back to a limited mode. Use Haxe 4 or newer.');
+			case "$/progress":
+				// The server's progress is its completion cache being built ("Haxe: Building Cache...").
+				if (message.params?.value?.kind == "begin") {
+					serverCache.cacheRebuilding();
+				}
+				bridge.toClient(message);
 			case "haxe/didRunHaxeMethod" | "haxe/didChangeRequestQueue" | "haxe/didChangeDisplayPort" | "haxe/didRunGlobalDiagnostics" |
 				"haxe/executeClientCommand":
 				// Feed vshaxe's VS Code views; Zed has nowhere to show them.
