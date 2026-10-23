@@ -243,6 +243,19 @@ To try a local build instead, set `server.path` to its `bin/server.js`.
 
 ## Credits
 
-- [Zed-Haxe by Frixuu](https://github.com/Frixuu/Zed-Haxe), which this extension started from
+This is a fork of [Frixuu's Zed-Haxe](https://github.com/Frixuu/Zed-Haxe), but almost all of it is a rewrite.
+Kept from the original:
+
+- the language configs and tree-sitter queries in `languages/` (highlighting, outline, brackets,
+  indents, folds) and the choice of grammars
+- the way completion and symbol labels get syntax highlighting
+- falling back to the last downloaded server when offline
+- the extension id `haxe` and server name `haxe-language-server`, so existing settings keep working
+
+Everything else is new, including the bridge, project and Haxe detection, tasks, target switching
+and the markup support.
+
+Also built on:
+
 - [tree-sitter grammar by tong](https://github.com/tong/tree-sitter-haxe)
 - [haxe-language-server by the vshaxe team](https://github.com/vshaxe/haxe-language-server), MIT-licensed
