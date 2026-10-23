@@ -1,6 +1,7 @@
 package bridge.lsp;
 
 import bridge.util.HaxeTypes;
+import bridge.util.Uris;
 
 /**
 	Turns the compiler's JSON display results (`haxe.display.Display`) into LSP shapes,
@@ -131,6 +132,6 @@ class HaxeItems {
 	public static function locations(result:Dynamic):Array<Dynamic> {
 		final found:Array<Dynamic> = result ?? [];
 		// Haxe answers `[null]` when there is nothing to go to, e.g. the type of a function.
-		return [for (location in found) if (location != null && location.file != null) {uri: Rewrites.pathToUri(location.file), range: location.range}];
+		return [for (location in found) if (location != null && location.file != null) {uri: Uris.fromPath(location.file), range: location.range}];
 	}
 }

@@ -726,6 +726,75 @@ bridge_State.__name__ = "bridge.State";
 Object.assign(bridge_State.prototype, {
 	__class__: bridge_State
 });
+class bridge_lsp_Client {
+	constructor(bridge) {
+		this.warnings = [];
+		this.initialized = false;
+		this.capabilities = { };
+		this.bridge = bridge;
+	}
+	markInitialized() {
+		this.initialized = true;
+	}
+	registersDynamically(path) {
+		let node = this.capabilities;
+		let _g = 0;
+		while(_g < path.length) {
+			let key = path[_g];
+			++_g;
+			node = node == null ? null : Reflect.field(node,key);
+		}
+		return (node != null ? node.dynamicRegistration : null) == true;
+	}
+	startProgress(title) {
+		let tmp;
+		if(this.initialized) {
+			let tmp1 = this.capabilities.window;
+			tmp = (tmp1 != null ? tmp1.workDoneProgress : null) != true;
+		} else {
+			tmp = true;
+		}
+		if(tmp) {
+			return function() {
+			};
+		}
+		let token = "haxe-zed-progress-" + new Date().getTime();
+		this.bridge.requestClient("window/workDoneProgress/create",{ token : token}).then(null,function(_) {
+			return null;
+		});
+		this.bridge.notifyClient("$/progress",{ token : token, value : { kind : "begin", title : title}});
+		let _gthis = this;
+		return function() {
+			_gthis.bridge.notifyClient("$/progress",{ token : token, value : { kind : "end"}});
+		};
+	}
+	showMessage(type,message) {
+		this.bridge.requestClient("window/showMessageRequest",{ type : type, message : message, actions : [{ title : "OK"}]}).then(null,function(_) {
+			return null;
+		});
+	}
+	warn(warning) {
+		this.warnings.push(warning);
+	}
+	flushWarnings() {
+		if(!this.initialized || this.warnings.length == 0) {
+			return;
+		}
+		let _g = 0;
+		let _g1 = this.warnings;
+		while(_g < _g1.length) {
+			let warning = _g1[_g];
+			++_g;
+			bridge_Log.info("warning: " + warning);
+		}
+		this.showMessage(2,this.warnings.join("\n\n"));
+		this.warnings = [];
+	}
+}
+bridge_lsp_Client.__name__ = "bridge.lsp.Client";
+Object.assign(bridge_lsp_Client.prototype, {
+	__class__: bridge_lsp_Client
+});
 var bridge_lsp_DocContext = $hxEnums["bridge.lsp.DocContext"] = { __ename__:true,__constructs__:null
 	,Define: ($_=function(name) { return {_hx_index:0,name:name,__enum__:"bridge.lsp.DocContext",toString:$estr,__params__:function(){ return [this.name];}}; },$_._hx_name="Define",$_)
 	,Metadata: ($_=function(name) { return {_hx_index:1,name:name,__enum__:"bridge.lsp.DocContext",toString:$estr,__params__:function(){ return [this.name];}}; },$_._hx_name="Metadata",$_)
@@ -1229,7 +1298,7 @@ class bridge_lsp_HaxeItems {
 			let location = found1[_g1];
 			++_g1;
 			if(location != null && location.file != null) {
-				_g.push({ uri : bridge_lsp_Rewrites.pathToUri(location.file), range : location.range});
+				_g.push({ uri : bridge_util_Uris.fromPath(location.file), range : location.range});
 			}
 		}
 		return _g;
@@ -1240,7 +1309,7 @@ class bridge_lsp_Locations {
 	static handle(bridge,documents,message,haxeMethod) {
 		let uri = message.params.textDocument.uri;
 		let text = documents.text(uri);
-		let path = bridge_lsp_Rewrites.uriToPath(uri);
+		let path = bridge_util_Uris.toPath(uri);
 		if(text == null || path == null) {
 			bridge.toServer(message);
 			return;
@@ -1290,7 +1359,7 @@ class bridge_lsp_MarkupFeature {
 	handleHaxe(message) {
 		let uri = message.params.textDocument.uri;
 		let text = this.documents.text(uri);
-		let path = bridge_lsp_Rewrites.uriToPath(uri);
+		let path = bridge_util_Uris.toPath(uri);
 		if(text == null || path == null || text.indexOf("@:") < 0) {
 			return false;
 		}
@@ -1311,7 +1380,7 @@ class bridge_lsp_MarkupFeature {
 	handleFile(message) {
 		let uri = message.params.textDocument.uri;
 		let text = this.documents.text(uri);
-		let path = bridge_lsp_Rewrites.uriToPath(uri);
+		let path = bridge_util_Uris.toPath(uri);
 		if(text == null || path == null) {
 			this.bridge.replyToClient(message.id,null);
 			return;
@@ -1714,7 +1783,7 @@ class bridge_lsp_MarkupFeature {
 				let method = "\n\tfunction haxeZedProbe() { " + declarations + "{ " + before;
 				let rest = "" + after + "; } }\n";
 				let edits = [];
-				if(bridge_lsp_Rewrites.uriToPath(at.uri) == host1.file && !bridge_lsp_MarkupFeature.parses(markup)) {
+				if(bridge_util_Uris.toPath(at.uri) == host1.file && !bridge_lsp_MarkupFeature.parses(markup)) {
 					edits.push({ at : at.region.start, removed : at.region.end - at.region.start, text : bridge_lsp_MarkupFeature.rootOnly(markup)});
 				}
 				return bridge_lsp_MarkupFeature.insertIntoClass(host1,hostText,method,rest,edits);
@@ -1893,7 +1962,7 @@ class bridge_lsp_MarkupFeature {
 		return null;
 	}
 	readFile(path) {
-		let open = this.documents.text(bridge_lsp_Rewrites.pathToUri(path));
+		let open = this.documents.text(bridge_util_Uris.fromPath(path));
 		if(open != null) {
 			return open;
 		}
@@ -1983,7 +2052,7 @@ class bridge_lsp_MarkupFeature {
 		return offset - shift;
 	}
 	static realLocations(code,locations) {
-		let uri = bridge_lsp_Rewrites.pathToUri(code.file);
+		let uri = bridge_util_Uris.fromPath(code.file);
 		let _g = 0;
 		while(_g < locations.length) {
 			let location = locations[_g];
@@ -2156,29 +2225,145 @@ class bridge_lsp_Ranking {
 	}
 }
 bridge_lsp_Ranking.__name__ = "bridge.lsp.Ranking";
+class bridge_lsp_Registrations {
+	constructor(bridge,client,session,commands) {
+		this.bridge = bridge;
+		this.client = client;
+		this.session = session;
+		this.commands = commands;
+	}
+	patchCapabilities(capabilities) {
+		capabilities.typeDefinitionProvider = true;
+		capabilities.implementationProvider = true;
+		let tmp = capabilities.completionProvider;
+		if((tmp != null ? tmp.triggerCharacters : null) != null) {
+			bridge_lsp_Registrations.addTriggers(capabilities.completionProvider.triggerCharacters);
+		}
+		let tmp1 = capabilities.executeCommandProvider;
+		let existing = tmp1 != null ? tmp1.commands : null;
+		let serverCommands = existing;
+		capabilities.executeCommandProvider = { commands : this.commands.declare(serverCommands != null ? serverCommands : [])};
+	}
+	filter(message,field) {
+		let listed = Reflect.field(message.params,field);
+		let all = listed;
+		let all1 = all != null ? all : [];
+		let _g = 0;
+		while(_g < all1.length) {
+			let registration = all1[_g];
+			++_g;
+			let options = registration.registerOptions;
+			if(registration.method == "textDocument/completion" && (options != null ? options.triggerCharacters : null) != null && JSON.stringify(options.documentSelector).indexOf("\"haxe\"") >= 0) {
+				bridge_lsp_Registrations.addTriggers(options.triggerCharacters);
+			}
+		}
+		let _g1 = [];
+		let _g2 = 0;
+		let _g3 = all1;
+		while(_g2 < _g3.length) {
+			let v = _g3[_g2];
+			++_g2;
+			if(!bridge_lsp_Registrations.declaredUpFront.includes(v.method)) {
+				_g1.push(v);
+			}
+		}
+		let kept = _g1;
+		if(kept.length == 0) {
+			this.bridge.replyToServer(message.id,null);
+			return;
+		}
+		message.params[field] = kept;
+		this.bridge.toClient(message);
+	}
+	registerFileWatchers() {
+		if(!this.client.registersDynamically(["workspace","didChangeWatchedFiles"])) {
+			return;
+		}
+		let globs = ["**/*.hx","**/*.hxml","**/.haxerc","**/module.xml"];
+		let _g = 0;
+		let tmp = this.session.project;
+		let tmp1 = tmp != null ? tmp.watch : null;
+		let _g1 = tmp1 != null ? tmp1 : [];
+		while(_g < _g1.length) {
+			let name = _g1[_g];
+			++_g;
+			let glob = "**/" + name;
+			if(!globs.includes(glob)) {
+				globs.push(glob);
+			}
+		}
+		let tmp2 = this.bridge;
+		let _g2 = [];
+		let _g3 = 0;
+		while(_g3 < globs.length) {
+			let glob = globs[_g3];
+			++_g3;
+			_g2.push({ globPattern : glob});
+		}
+		tmp2.requestClient("client/registerCapability",{ registrations : [{ id : "haxe-zed-file-watchers", method : "workspace/didChangeWatchedFiles", registerOptions : { watchers : _g2}}]}).then(null,function(error) {
+			bridge_Log.info("Zed refused the file watchers: " + JSON.stringify(error));
+		});
+	}
+	registerMarkupFiles() {
+		if(!this.session.markupEnabled()) {
+			return;
+		}
+		let selector = [{ language : "xml"}];
+		let wanted = [{ method : "textDocument/completion", capability : "completion", options : { documentSelector : selector, triggerCharacters : ["<"," ","\"","/",".","("], resolveProvider : true}},{ method : "textDocument/hover", capability : "hover", options : { documentSelector : selector}},{ method : "textDocument/definition", capability : "definition", options : { documentSelector : selector}},{ method : "textDocument/signatureHelp", capability : "signatureHelp", options : { documentSelector : selector, triggerCharacters : ["(",","]}}];
+		let _g = [];
+		let _g1 = 0;
+		while(_g1 < wanted.length) {
+			let entry = wanted[_g1];
+			++_g1;
+			if(this.client.registersDynamically(["textDocument",entry.capability])) {
+				_g.push({ id : "haxe-zed-markup-" + entry.capability, method : entry.method, registerOptions : entry.options});
+			}
+		}
+		let registrations = _g;
+		if(registrations.length > 0) {
+			this.bridge.requestClient("client/registerCapability",{ registrations : registrations}).then(null,function(error) {
+				bridge_Log.info("Zed refused markup registrations: " + JSON.stringify(error));
+			});
+		}
+	}
+	static addTriggers(triggers) {
+		let _g = 0;
+		let _g1 = bridge_lsp_Registrations.markupTriggers;
+		while(_g < _g1.length) {
+			let trigger = _g1[_g];
+			++_g;
+			if(!triggers.includes(trigger)) {
+				triggers.push(trigger);
+			}
+		}
+	}
+}
+bridge_lsp_Registrations.__name__ = "bridge.lsp.Registrations";
+Object.assign(bridge_lsp_Registrations.prototype, {
+	__class__: bridge_lsp_Registrations
+});
 class bridge_lsp_Rewrites {
 	constructor(bridge,state) {
-		this.resolveAgain = false;
-		this.resolving = false;
-		this.warnings = [];
-		this.tasksWarned = false;
-		this.initialized = false;
-		this.userDisplayServer = { };
-		this.settings = { };
-		this.workspaceRoot = process.cwd();
-		this.clientCapabilities = { };
 		this.completionRequests = new haxe_ds_StringMap();
 		this.docRequests = new haxe_ds_StringMap();
 		this.documents = new bridge_lsp_Documents();
 		this.bridge = bridge;
-		let tmp = state;
-		this.state = tmp != null ? tmp : new bridge_State();
-		this.docs = new bridge_lsp_CompilerDocs(bridge,$bind(this,this.displayArguments));
+		this.client = new bridge_lsp_Client(bridge);
+		let state1 = state;
+		this.session = new bridge_lsp_Session(bridge,this.client,state1 != null ? state1 : new bridge_State());
+		this.commands = new bridge_lsp_TargetCommands(bridge,this.client,this.session);
+		this.registrations = new bridge_lsp_Registrations(bridge,this.client,this.session,this.commands);
+		this.docs = new bridge_lsp_CompilerDocs(bridge,($_=this.session,$bind($_,$_.displayArguments)));
 		let _gthis = this;
-		this.markup = new bridge_lsp_MarkupFeature(bridge,this.documents,$bind(this,this.displayArguments),function() {
-			return _gthis.workspaceRoot;
+		this.markup = new bridge_lsp_MarkupFeature(bridge,this.documents,($_=this.session,$bind($_,$_.displayArguments)),function() {
+			return _gthis.session.workspaceRoot;
 		},$bind(this,this.privateMembers));
 		this.serverCache = new bridge_lsp_ServerCache(bridge,this.documents);
+		this.session.onChanged = function() {
+			_gthis.docs.invalidate();
+			_gthis.markup.reset();
+			_gthis.commands.update();
+		};
 	}
 	fromClient(message) {
 		if(this.held != null) {
@@ -2213,9 +2398,9 @@ class bridge_lsp_Rewrites {
 				this.onInitialized();
 				break;
 			case "textDocument/completion":
-				if(!(this.markupEnabled() && this.markup.handleHaxe(message))) {
+				if(!(this.session.markupEnabled() && this.markup.handleHaxe(message))) {
 					let tmp = message.params.context;
-					if(bridge_lsp_Rewrites.markupTriggers.includes(tmp != null ? tmp.triggerCharacter : null)) {
+					if(bridge_lsp_Registrations.markupTriggers.includes(tmp != null ? tmp.triggerCharacter : null)) {
 						this.bridge.replyToClient(message.id,{ isIncomplete : false, items : []});
 					} else {
 						this.rememberDocContext(message);
@@ -2241,14 +2426,14 @@ class bridge_lsp_Rewrites {
 				break;
 			case "textDocument/didSave":
 				this.bridge.toServer(message);
-				let path = bridge_lsp_Rewrites.uriToPath(message.params.textDocument.uri);
+				let path = bridge_util_Uris.toPath(message.params.textDocument.uri);
 				if(path != null) {
 					this.markup.fileChanged(path);
 					this.serverCache.filesChanged([path]);
 				}
 				break;
 			case "textDocument/hover":
-				if(!(this.markupEnabled() && this.markup.handleHaxe(message))) {
+				if(!(this.session.markupEnabled() && this.markup.handleHaxe(message))) {
 					this.rememberDocContext(message);
 					if(message.method == "textDocument/completion" && !this.docRequests.m.has(Std.string(message.id))) {
 						this.rememberCompletion(message);
@@ -2260,7 +2445,7 @@ class bridge_lsp_Rewrites {
 				bridge_lsp_Locations.handle(this.bridge,this.documents,message,"display/implementation");
 				break;
 			case "textDocument/definition":case "textDocument/signatureHelp":
-				if(!(this.markupEnabled() && this.markup.handleHaxe(message))) {
+				if(!(this.session.markupEnabled() && this.markup.handleHaxe(message))) {
 					this.bridge.toServer(message);
 				}
 				break;
@@ -2274,15 +2459,15 @@ class bridge_lsp_Rewrites {
 				this.onDidChangeWatchedFiles(message);
 				break;
 			case "workspace/executeCommand":
-				if(this.isBridgeCommand(message.params.command)) {
+				if(this.commands.handles(message.params.command)) {
 					this.bridge.replyToClient(message.id,null);
-					this.runCommand(message.params.command);
+					this.commands.run(message.params.command);
 				} else {
 					this.bridge.toServer(message);
 				}
 				break;
 			case "workspace/symbol":
-				if(this.toolchain != null && this.toolchain.major >= 5) {
+				if(this.session.toolchain != null && this.session.toolchain.major >= 5) {
 					bridge_lsp_WorkspaceSymbols.handle(this.bridge,message);
 				} else {
 					this.bridge.toServer(message);
@@ -2307,36 +2492,47 @@ class bridge_lsp_Rewrites {
 				return;
 			}
 			if(this.completionRequests.m.has(Std.string(message.id))) {
-				let enclosing = this.completionRequests.m.get(Std.string(message.id));
+				let context = this.completionRequests.m.get(Std.string(message.id));
 				this.completionRequests.m.delete(Std.string(message.id));
-				this.rankCompletion(message,enclosing);
+				this.rankCompletion(message,context);
 			}
 			if(message.id == this.initializeId && message.result != null) {
-				this.patchCapabilities(message.result.capabilities);
+				this.registrations.patchCapabilities(message.result.capabilities);
 			}
 			this.bridge.toClient(message);
 		} else {
 			switch(_g) {
 			case "client/registerCapability":
-				this.filterRegistrations(message,"registrations");
+				this.registrations.filter(message,"registrations");
 				break;
 			case "client/unregisterCapability":
-				this.filterRegistrations(message,"unregisterations");
+				this.registrations.filter(message,"unregisterations");
 				break;
 			case "haxe/cacheBuildFailed":
-				bridge_Log.info("completion cache build failed with: " + this.describeArgs());
-				this.showMessage(2,"Haxe: building the completion cache failed" + this.describeTarget() + ". " + "The project may not compile as configured; the language server log has the compiler output.");
+				bridge_Log.info("completion cache build failed with: " + this.session.describeArgs());
+				this.client.showMessage(2,"Haxe: building the completion cache failed" + this.session.describeTarget() + ". " + "The project may not compile as configured; the language server log has the compiler output.");
 				break;
 			case "haxe/didDetectOldHaxeVersion":
-				this.showMessage(2,message.params.haxe4Preview == true ? "Haxe " + Std.string(message.params.version) + " is a Haxe 4 preview, which haxe-language-server only partly supports. Use a Haxe 4 release or newer." : "Haxe " + Std.string(message.params.version) + " is older than Haxe 4, so haxe-language-server falls back to a limited mode. Use Haxe 4 or newer.");
+				this.client.showMessage(2,message.params.haxe4Preview == true ? "Haxe " + Std.string(message.params.version) + " is a Haxe 4 preview, which haxe-language-server only partly supports. Use a Haxe 4 release or newer." : "Haxe " + Std.string(message.params.version) + " is older than Haxe 4, so haxe-language-server falls back to a limited mode. Use Haxe 4 or newer.");
 				break;
 			case "haxe/didChangeDisplayPort":case "haxe/didChangeRequestQueue":case "haxe/didRunGlobalDiagnostics":case "haxe/didRunHaxeMethod":case "haxe/executeClientCommand":
 				break;
 			case "haxe/haxeKeepsCrashing":
-				this.showMessage(1,"Haxe: the compiler keeps crashing. See the language server log for details.");
+				this.client.showMessage(1,"Haxe: the compiler keeps crashing. See the language server log for details.");
 				break;
 			case "haxe/listLibraries":
-				this.listLibraries(message);
+				this.session.libraryNames().then(function(names) {
+					let _gthis1 = _gthis.bridge;
+					let message1 = message.id;
+					let _g = [];
+					let _g1 = 0;
+					while(_g1 < names.length) {
+						let name = names[_g1];
+						++_g1;
+						_g.push({ name : name});
+					}
+					_gthis1.replyToServer(message1,_g);
+				});
 				break;
 			default:
 				this.bridge.toClient(message);
@@ -2344,37 +2540,18 @@ class bridge_lsp_Rewrites {
 		}
 	}
 	onInitialize(message) {
-		let params = message.params;
 		this.initializeId = message.id;
-		let tmp = params.capabilities;
-		this.clientCapabilities = tmp != null ? tmp : { };
-		let tmp1 = this.clientCapabilities.textDocument;
+		let tmp = message.params.capabilities;
+		this.client.capabilities = tmp != null ? tmp : { };
+		let tmp1 = this.client.capabilities.textDocument;
 		let tmp2 = tmp1 != null ? tmp1.completion : null;
 		let tmp3 = tmp2 != null ? tmp2.completionItem : null;
 		this.markup.snippets = (tmp3 != null ? tmp3.snippetSupport : null) == true;
-		let tmp4 = bridge_lsp_Rewrites.rootPath(params);
-		this.workspaceRoot = tmp4 != null ? tmp4 : process.cwd();
-		let options;
-		let options1 = params.initializationOptions;
-		options = options1 != null ? options1 : { };
-		let tmp5 = options["project"];
-		this.settings = tmp5 != null ? tmp5 : { };
-		Reflect.deleteField(options,"project");
-		this.userDisplayArguments = options["displayArguments"];
-		let tmp6 = options["displayServerConfig"];
-		this.userDisplayServer = tmp6 != null ? tmp6 : { };
-		this.applyTraceFile();
 		this.held = [];
 		let _gthis = this;
-		this.resolveProject().then(function(_) {
-			let value = _gthis.displayArguments();
-			options["displayArguments"] = value;
-			let value1 = _gthis.displayServerConfig();
-			options["displayServerConfig"] = value1;
-			params.initializationOptions = options;
-			bridge_Log.info(_gthis.describe());
+		this.session.initialize(message.params).then(function(options) {
+			message.params.initializationOptions = options;
 			_gthis.bridge.toServer(message);
-			_gthis.writeTasks();
 			let queued = _gthis.held;
 			_gthis.held = null;
 			let _g = 0;
@@ -2386,14 +2563,11 @@ class bridge_lsp_Rewrites {
 		});
 	}
 	onInitialized() {
-		this.initialized = true;
-		this.registerFileWatchers();
-		this.registerMarkupFiles();
-		this.flushWarnings();
-		let tmp = this.project;
-		if((tmp != null ? tmp.provider : null) != "hxml" && !this.state.wasPrompted(this.projectRoot()) && this.settings.target == null) {
-			this.promptForTarget();
-		}
+		this.client.markInitialized();
+		this.registrations.registerFileWatchers();
+		this.registrations.registerMarkupFiles();
+		this.client.flushWarnings();
+		this.commands.promptOnce();
 	}
 	onDidChangeConfiguration(message) {
 		let all = message.params.settings;
@@ -2404,42 +2578,29 @@ class bridge_lsp_Rewrites {
 		Reflect.deleteField(all1,"server");
 		message.params.settings = all1;
 		this.bridge.toServer(message);
-		if(JSON.stringify(next1) != JSON.stringify(this.settings)) {
-			this.settings = next1;
-			this.applyTraceFile();
-			this.scheduleReresolve("settings changed");
-		}
+		this.session.updateSettings(next1);
 	}
 	onDidChangeWatchedFiles(message) {
 		this.bridge.toServer(message);
 		let reported = message.params.changes;
-		let changes = reported;
-		let changes1 = changes != null ? changes : [];
 		let paths = [];
 		let _g = 0;
-		while(_g < changes1.length) {
-			let change = changes1[_g];
+		let tmp = reported;
+		let _g1 = tmp != null ? tmp : [];
+		while(_g < _g1.length) {
+			let change = _g1[_g];
 			++_g;
-			let changed = bridge_lsp_Rewrites.uriToPath(change.uri);
-			if(changed != null) {
-				this.markup.fileChanged(changed);
-				paths.push(changed);
+			let path = bridge_util_Uris.toPath(change.uri);
+			if(path != null) {
+				this.markup.fileChanged(path);
+				paths.push(path);
 			}
 		}
 		this.serverCache.filesChanged(paths);
-		let _g1 = 0;
-		while(_g1 < changes1.length) {
-			let change = changes1[_g1];
-			++_g1;
-			let path = bridge_lsp_Rewrites.uriToPath(change.uri);
-			if(path != null && this.isProjectFile(path)) {
-				this.scheduleReresolve("" + haxe_io_Path.withoutDirectory(path) + " changed");
-				return;
-			}
-		}
+		this.session.filesChanged(paths);
 	}
 	privateMembers() {
-		let tmp = this.settings.privateMembers;
+		let tmp = this.session.settings.privateMembers;
 		if(tmp != null) {
 			return tmp;
 		} else {
@@ -2482,9 +2643,6 @@ class bridge_lsp_Rewrites {
 			result.items = ranked;
 		}
 	}
-	markupEnabled() {
-		return this.settings.markup != false;
-	}
 	fromClientForMarkupFile(message,uri) {
 		let _g = message.method;
 		if(_g == null) {
@@ -2503,7 +2661,7 @@ class bridge_lsp_Rewrites {
 				this.documents.open(uri,message.params.textDocument.text);
 				break;
 			case "textDocument/completion":case "textDocument/definition":case "textDocument/hover":case "textDocument/signatureHelp":
-				if(this.markupEnabled()) {
+				if(this.session.markupEnabled()) {
 					this.markup.handleFile(message);
 				} else if(message.id != null) {
 					this.bridge.replyToClient(message.id,null);
@@ -2528,580 +2686,9 @@ class bridge_lsp_Rewrites {
 			this.docRequests.m.set(Std.string(message.id),{ method : message.method, context : context});
 		}
 	}
-	isProjectFile(path) {
-		let current = this.project;
-		if(current == null) {
-			return false;
-		}
-		let name = haxe_io_Path.withoutDirectory(path);
-		return name == ".haxerc" || current.watch.includes(name) || current.provider == "hxml" && name.endsWith(".hxml") || current.file != null && haxe_io_Path.normalize(current.file) == haxe_io_Path.normalize(path);
-	}
-	scheduleReresolve(reason) {
-		if(this.reresolveTimer != null) {
-			this.reresolveTimer.stop();
-		}
-		let _gthis = this;
-		this.reresolveTimer = haxe_Timer.delay(function() {
-			_gthis.reresolve(reason);
-		},300);
-	}
-	reresolve(reason) {
-		if(this.resolving) {
-			this.resolveAgain = true;
-			return;
-		}
-		this.resolving = true;
-		let argsBefore = JSON.stringify(this.displayArguments());
-		let serverBefore = JSON.stringify(this.displayServerConfig());
-		let toolchainBefore = this.toolchain;
-		let done = this.startProgress("Haxe: updating project (" + reason + ")");
-		let _gthis = this;
-		this.resolveProject().then(function(_) {
-			if(JSON.stringify(_gthis.displayServerConfig()) != serverBefore) {
-				if(_gthis.needsFullRestart(toolchainBefore,_gthis.toolchain)) {
-					let tmp = _gthis.toolchain;
-					_gthis.showMessage(2,"Haxe changed from " + (toolchainBefore != null ? toolchainBefore.version : null) + " to " + (tmp != null ? tmp.version : null) + ". " + "Restart the language server to use it: haxe-language-server can't switch a Haxe 4 project with a .haxerc to Haxe 5 in place.");
-					_gthis.toolchain = toolchainBefore;
-				} else {
-					_gthis.bridge.notifyServer("haxe/didChangeDisplayServerConfig",_gthis.displayServerConfig());
-				}
-			}
-			if(JSON.stringify(_gthis.displayArguments()) != argsBefore) {
-				_gthis.bridge.notifyServer("haxe/didChangeDisplayArguments",{ 'arguments' : _gthis.displayArguments()});
-			}
-			_gthis.docs.invalidate();
-			_gthis.markup.reset();
-			bridge_Log.info(_gthis.describe());
-			_gthis.writeTasks();
-			_gthis.updateCommands();
-			done();
-			_gthis.flushWarnings();
-			_gthis.resolving = false;
-			if(_gthis.resolveAgain) {
-				_gthis.resolveAgain = false;
-				_gthis.reresolve("further changes");
-			}
-		});
-	}
-	needsFullRestart(before,after) {
-		return before != null && after != null && before.major < 5 && after.major >= 5 && sys_FileSystem.exists(haxe_io_Path.join([this.workspaceRoot,".haxerc"]));
-	}
-	resolveProject() {
-		let root = this.projectRoot();
-		let ctx = { workspaceRoot : this.workspaceRoot, projectRoot : root, settings : this.effectiveSettings(), env : process.env};
-		let _gthis = this;
-		return bridge_project_ProjectResolver.resolve(ctx,this.state.target(root)).then(function(resolved) {
-			_gthis.project = resolved;
-			let haxerc = bridge_toolchain_Haxerc.find(root,_gthis.workspaceRoot);
-			_gthis.toolchain = bridge_toolchain_Toolchain.resolve({ workspaceRoot : _gthis.workspaceRoot, projectRoot : root, haxerc : haxerc != null ? haxerc.data : null, providerHaxePath : resolved.haxePath, env : process.env},_gthis.settings);
-			_gthis.warnings = _gthis.warnings.concat(resolved.warnings).concat(_gthis.toolchain.notes);
-			if((haxerc != null ? haxerc.data.resolveLibs : null) == "scoped" && _gthis.toolchain.source != "lix") {
-				_gthis.warnings.push("" + haxerc.path + " uses lix-style libraries (haxe_libraries/), but Haxe comes from " + _gthis.toolchain.source + ". " + "If libraries are missing, run `hx lix-libs` (haxe-manager) or install lix.");
-			}
-			return true;
-		},function(error) {
-			_gthis.warnings.push("Haxe project detection failed: " + Std.string(error));
-			return true;
-		});
-	}
-	projectRoot() {
-		if(this.settings.root == null) {
-			return this.workspaceRoot;
-		} else {
-			return haxe_io_Path.join([this.workspaceRoot,this.settings.root]);
-		}
-	}
-	displayArguments() {
-		let userArgs = this.userDisplayArguments;
-		if(userArgs != null) {
-			return userArgs;
-		}
-		let current = this.project;
-		if(current == null) {
-			return [];
-		}
-		if(!this.supportsDocPacks() || current.docs.length == 0) {
-			return current.args;
-		}
-		return bridge_project_DocPacks.macros(current.docs,current.args,this.projectRoot(),haxe_io_Path.join([this.state.dir,"docs"])).concat(current.args);
-	}
-	displayServerConfig() {
-		let haxe = this.toolchain;
-		let env = haxe == null ? { } : Reflect.copy(haxe.env);
-		let userEnv = this.userDisplayServer["env"];
-		if(userEnv != null) {
-			let access = userEnv;
-			let _g_access = access;
-			let _g_keys = Reflect.fields(access);
-			let _g_index = 0;
-			while(_g_index < _g_keys.length) {
-				let key = _g_keys[_g_index++];
-				let _g_value = _g_access[key];
-				let _g_key = key;
-				let key1 = _g_key;
-				let value = _g_value;
-				env[key1] = value;
-			}
-		}
-		let path = haxe == null ? "haxe" : haxe.path;
-		let config = { path : path.indexOf(" ") >= 0 ? "\"" + path + "\"" : path, env : env, 'arguments' : [], useSocket : true, print : { completion : false, reusing : false}};
-		let access = this.userDisplayServer;
-		let _g_access = access;
-		let _g_keys = Reflect.fields(access);
-		let _g_index = 0;
-		while(_g_index < _g_keys.length) {
-			let key = _g_keys[_g_index++];
-			let _g_value = _g_access[key];
-			let _g_key = key;
-			let key1 = _g_key;
-			let value = _g_value;
-			if(key1 != "env") {
-				config[key1] = value;
-			}
-		}
-		return config;
-	}
-	supportsDocPacks() {
-		let tmp = this.toolchain;
-		let version = tmp != null ? tmp.version : null;
-		if(version == null) {
-			return false;
-		}
-		let _this = version.split(".");
-		let f = Std.parseInt;
-		let result = new Array(_this.length);
-		let _g = 0;
-		let _g1 = _this.length;
-		while(_g < _g1) {
-			let i = _g++;
-			result[i] = f(_this[i]);
-		}
-		let parts = result;
-		return parts[0] > 4 || parts[0] == 4 && parts[1] >= 3;
-	}
-	patchCapabilities(capabilities) {
-		capabilities.typeDefinitionProvider = true;
-		capabilities.implementationProvider = true;
-		let tmp = capabilities.completionProvider;
-		if((tmp != null ? tmp.triggerCharacters : null) != null) {
-			bridge_lsp_Rewrites.addTriggers(capabilities.completionProvider.triggerCharacters);
-		}
-		let tmp1 = capabilities.executeCommandProvider;
-		let existing = tmp1 != null ? tmp1.commands : null;
-		let tmp2 = existing;
-		let commands = (tmp2 != null ? tmp2 : []).concat(this.bridgeCommands());
-		this.registeredCommands = JSON.stringify(commands);
-		capabilities.executeCommandProvider = { commands : commands};
-	}
-	bridgeCommands() {
-		let commands = ["Haxe: choose target"];
-		let current = this.project;
-		if(current == null) {
-			return commands;
-		}
-		let _g = 0;
-		let _g1 = current.targets;
-		while(_g < _g1.length) {
-			let target = _g1[_g];
-			++_g;
-			commands.push("Haxe: target " + target + (target == current.target ? " (current)" : ""));
-		}
-		let buildType = this.currentBuildType();
-		let _g2 = 0;
-		let _g3 = current.buildTypes;
-		while(_g2 < _g3.length) {
-			let type = _g3[_g2];
-			++_g2;
-			commands.push("Haxe: build type " + type + (type == buildType ? " (current)" : ""));
-		}
-		return commands;
-	}
-	updateCommands() {
-		let commands = this.bridgeCommands();
-		let json = JSON.stringify(commands);
-		let tmp;
-		if(json != this.registeredCommands) {
-			let tmp1 = this.clientCapabilities.workspace;
-			let tmp2 = tmp1 != null ? tmp1.executeCommand : null;
-			tmp = (tmp2 != null ? tmp2.dynamicRegistration : null) != true;
-		} else {
-			tmp = true;
-		}
-		if(tmp) {
-			return;
-		}
-		this.registeredCommands = json;
-		this.bridge.requestClient("client/registerCapability",{ registrations : [{ id : "haxe-zed-commands", method : "workspace/executeCommand", registerOptions : { commands : commands}}]}).then(null,function(error) {
-			bridge_Log.info("Zed refused the command list: " + JSON.stringify(error));
-		});
-	}
-	isBridgeCommand(command) {
-		return command == "Haxe: choose target" || command == "haxe.selectTarget" || bridge_lsp_Rewrites.targetCommand.match(command) || bridge_lsp_Rewrites.buildTypeCommand.match(command);
-	}
-	runCommand(command) {
-		let root = this.projectRoot();
-		if(bridge_lsp_Rewrites.targetCommand.match(command)) {
-			this.targetOverride = bridge_lsp_Rewrites.targetCommand.matched(1);
-			this.state.setTarget(root,bridge_lsp_Rewrites.targetCommand.matched(1));
-			this.scheduleReresolve("target \"" + bridge_lsp_Rewrites.targetCommand.matched(1) + "\" picked");
-		} else if(bridge_lsp_Rewrites.buildTypeCommand.match(command)) {
-			this.buildTypeOverride = bridge_lsp_Rewrites.buildTypeCommand.matched(1);
-			this.state.setBuildType(root,bridge_lsp_Rewrites.buildTypeCommand.matched(1));
-			this.scheduleReresolve("build type \"" + bridge_lsp_Rewrites.buildTypeCommand.matched(1) + "\" picked");
-		} else {
-			this.promptForTarget();
-		}
-	}
-	effectiveSettings() {
-		let effective = Reflect.copy(this.settings);
-		let effective1 = effective != null ? effective : { };
-		let tmp = this.targetOverride;
-		effective1.target = tmp != null ? tmp : this.settings.target;
-		let tmp1 = this.buildTypeOverride;
-		let tmp2 = tmp1 != null ? tmp1 : this.settings.buildType;
-		effective1.buildType = tmp2 != null ? tmp2 : this.state.buildType(this.projectRoot());
-		return effective1;
-	}
-	currentBuildType() {
-		let tmp = this.project;
-		let types = tmp != null ? tmp.buildTypes : null;
-		let types1 = types != null ? types : [];
-		let chosen = this.effectiveSettings().buildType;
-		let tmp1 = chosen;
-		if(tmp1 != null) {
-			return tmp1;
-		} else if(types1.includes("release")) {
-			return "release";
-		} else {
-			return null;
-		}
-	}
-	writeTasks() {
-		let current = this.project;
-		if(this.settings.tasks == false || current == null || current.tasks.length == 0) {
-			return;
-		}
-		let haxe = this.toolchain;
-		let fromPath = haxe == null || haxe.source == "path" || haxe.source == "default";
-		let content = bridge_lsp_ZedTasks.render(current.tasks,this.workspaceRoot,{ haxe : fromPath ? "haxe" : haxe.path, haxelib : fromPath ? "haxelib" : this.haxelibExecutable(), env : fromPath ? { } : haxe.env},current.target);
-		try {
-			switch(bridge_lsp_ZedTasks.write(this.workspaceRoot,content)._hx_index) {
-			case 0:
-				bridge_Log.info("wrote " + current.tasks.length + " tasks to " + bridge_lsp_ZedTasks.path(this.workspaceRoot));
-				break;
-			case 2:
-				if(!this.tasksWarned) {
-					this.tasksWarned = true;
-					bridge_Log.info("" + bridge_lsp_ZedTasks.path(this.workspaceRoot) + " is your own file, so the Haxe tasks were not written to it");
-				}
-				break;
-			default:
-			}
-		} catch( _g ) {
-			let _g1 = haxe_Exception.caught(_g);
-			if(true) {
-				let e = _g1;
-				bridge_Log.info("could not write " + bridge_lsp_ZedTasks.path(this.workspaceRoot) + ": " + Std.string(e));
-			} else {
-				throw _g;
-			}
-		}
-	}
-	filterRegistrations(message,field) {
-		let staticMethods = ["textDocument/typeDefinition","textDocument/implementation"];
-		let listed = Reflect.field(message.params,field);
-		let all = listed;
-		let all1 = all != null ? all : [];
-		let _g = 0;
-		while(_g < all1.length) {
-			let registration = all1[_g];
-			++_g;
-			let options = registration.registerOptions;
-			if(registration.method == "textDocument/completion" && (options != null ? options.triggerCharacters : null) != null && JSON.stringify(options.documentSelector).indexOf("\"haxe\"") >= 0) {
-				bridge_lsp_Rewrites.addTriggers(options.triggerCharacters);
-			}
-		}
-		let _g1 = [];
-		let _g2 = 0;
-		let _g3 = all1;
-		while(_g2 < _g3.length) {
-			let v = _g3[_g2];
-			++_g2;
-			if(!staticMethods.includes(v.method)) {
-				_g1.push(v);
-			}
-		}
-		let kept = _g1;
-		if(kept.length == 0) {
-			this.bridge.replyToServer(message.id,null);
-			return;
-		}
-		message.params[field] = kept;
-		this.bridge.toClient(message);
-	}
-	registerMarkupFiles() {
-		if(!this.markupEnabled()) {
-			return;
-		}
-		let selector = [{ language : "xml"}];
-		let wanted = [{ method : "textDocument/completion", capability : "completion", options : { documentSelector : selector, triggerCharacters : ["<"," ","\"","/",".","("], resolveProvider : true}},{ method : "textDocument/hover", capability : "hover", options : { documentSelector : selector}},{ method : "textDocument/definition", capability : "definition", options : { documentSelector : selector}},{ method : "textDocument/signatureHelp", capability : "signatureHelp", options : { documentSelector : selector, triggerCharacters : ["(",","]}}];
-		let _g = [];
-		let _g1 = 0;
-		while(_g1 < wanted.length) {
-			let entry = wanted[_g1];
-			++_g1;
-			let o = this.clientCapabilities.textDocument;
-			let tmp = Reflect.field(o != null ? o : { },entry.capability);
-			if((tmp != null ? tmp.dynamicRegistration : null) == true) {
-				_g.push({ id : "haxe-zed-markup-" + entry.capability, method : entry.method, registerOptions : entry.options});
-			}
-		}
-		let registrations = _g;
-		if(registrations.length > 0) {
-			this.bridge.requestClient("client/registerCapability",{ registrations : registrations}).then(null,function(error) {
-				bridge_Log.info("Zed refused markup registrations: " + JSON.stringify(error));
-			});
-		}
-	}
-	registerFileWatchers() {
-		let tmp = this.clientCapabilities.workspace;
-		let tmp1 = tmp != null ? tmp.didChangeWatchedFiles : null;
-		if((tmp1 != null ? tmp1.dynamicRegistration : null) != true) {
-			return;
-		}
-		let globs = ["**/*.hx","**/*.hxml","**/.haxerc","**/module.xml"];
-		let _g = 0;
-		let tmp2 = this.project;
-		let tmp3 = tmp2 != null ? tmp2.watch : null;
-		let _g1 = tmp3 != null ? tmp3 : [];
-		while(_g < _g1.length) {
-			let name = _g1[_g];
-			++_g;
-			let glob = "**/" + name;
-			if(!globs.includes(glob)) {
-				globs.push(glob);
-			}
-		}
-		let tmp4 = this.bridge;
-		let _g2 = [];
-		let _g3 = 0;
-		while(_g3 < globs.length) {
-			let glob = globs[_g3];
-			++_g3;
-			_g2.push({ globPattern : glob});
-		}
-		tmp4.requestClient("client/registerCapability",{ registrations : [{ id : "haxe-zed-file-watchers", method : "workspace/didChangeWatchedFiles", registerOptions : { watchers : _g2}}]}).then(null,function(error) {
-			bridge_Log.info("Zed refused the file watchers: " + JSON.stringify(error));
-		});
-	}
-	promptForTarget() {
-		let current = this.project;
-		if(current == null || current.targets.length < 2) {
-			return;
-		}
-		let root = this.projectRoot();
-		this.state.setPrompted(root);
-		let targets = current.targets.slice(0,12);
-		let _gthis = this;
-		let tmp = this.bridge;
-		let tmp1 = "Haxe: using the " + current.provider + " target \"" + current.target + "\". Pick another target, or set `project.target` in your settings.";
-		let _g = [];
-		let _g1 = 0;
-		while(_g1 < targets.length) {
-			let target = targets[_g1];
-			++_g1;
-			_g.push({ title : target});
-		}
-		tmp.requestClient("window/showMessageRequest",{ type : 3, message : tmp1, actions : _g}).then(function(choice) {
-			if(choice == null) {
-				return;
-			}
-			_gthis.state.setTarget(root,choice.title);
-			if(choice.title != current.target) {
-				_gthis.targetOverride = choice.title;
-				_gthis.scheduleReresolve("target \"" + choice.title + "\" picked");
-			}
-		},function(error) {
-			bridge_Log.info("target prompt failed: " + JSON.stringify(error));
-		});
-	}
-	listLibraries(message) {
-		let names = [];
-		let scoped = haxe_io_Path.join([this.projectRoot(),"haxe_libraries"]);
-		if(sys_FileSystem.exists(scoped)) {
-			let _g = 0;
-			let _g1 = js_node_Fs.readdirSync(scoped);
-			while(_g < _g1.length) {
-				let file = _g1[_g];
-				++_g;
-				if(file.endsWith(".hxml")) {
-					names.push(haxe_io_Path.withoutExtension(file));
-				}
-			}
-		}
-		let haxelib = this.haxelibExecutable();
-		let env = Reflect.copy(process.env);
-		let tmp = this.toolchain;
-		let tmp1 = tmp != null ? tmp.env : null;
-		let access = tmp1 != null ? tmp1 : { };
-		let _g_access = access;
-		let _g_keys = Reflect.fields(access);
-		let _g_index = 0;
-		while(_g_index < _g_keys.length) {
-			let key = _g_keys[_g_index++];
-			let _g_value = _g_access[key];
-			let _g_key = key;
-			let key1 = _g_key;
-			let value = _g_value;
-			env[key1] = value;
-		}
-		let _gthis = this;
-		bridge_util_Exec.run([haxelib,"list"],{ cwd : this.projectRoot(), env : env, timeout : 20000}).then(function(result) {
-			let _g = 0;
-			let _g1 = result.stdout.split("\n");
-			while(_g < _g1.length) {
-				let line = _g1[_g];
-				++_g;
-				let colon = line.indexOf(":");
-				if(colon > 0) {
-					let name = StringTools.trim(HxOverrides.substr(line,0,colon));
-					if(!names.includes(name)) {
-						names.push(name);
-					}
-				}
-			}
-			let _gthis1 = _gthis.bridge;
-			let message1 = message.id;
-			let _g2 = [];
-			let _g3 = 0;
-			while(_g3 < names.length) {
-				let name = names[_g3];
-				++_g3;
-				_g2.push({ name : name});
-			}
-			_gthis1.replyToServer(message1,_g2);
-		},function(_) {
-			let _gthis1 = _gthis.bridge;
-			let message1 = message.id;
-			let _g = [];
-			let _g1 = 0;
-			while(_g1 < names.length) {
-				let name = names[_g1];
-				++_g1;
-				_g.push({ name : name});
-			}
-			_gthis1.replyToServer(message1,_g);
-		});
-	}
-	haxelibExecutable() {
-		let tmp = this.toolchain;
-		let haxe = tmp != null ? tmp.path : null;
-		if(haxe != null && haxe_io_Path.isAbsolute(haxe)) {
-			let sibling = bridge_util_Files.executableIn(haxe_io_Path.directory(haxe),"haxelib");
-			if(sibling != null) {
-				return sibling;
-			}
-		}
-		return "haxelib";
-	}
-	startProgress(title) {
-		let tmp;
-		if(this.initialized) {
-			let tmp1 = this.clientCapabilities.window;
-			tmp = (tmp1 != null ? tmp1.workDoneProgress : null) != true;
-		} else {
-			tmp = true;
-		}
-		if(tmp) {
-			return function() {
-			};
-		}
-		let token = "haxe-zed-progress-" + new Date().getTime();
-		this.bridge.requestClient("window/workDoneProgress/create",{ token : token}).then(null,function(_) {
-			return null;
-		});
-		this.bridge.notifyClient("$/progress",{ token : token, value : { kind : "begin", title : title}});
-		let _gthis = this;
-		return function() {
-			_gthis.bridge.notifyClient("$/progress",{ token : token, value : { kind : "end"}});
-		};
-	}
-	showMessage(type,message) {
-		this.bridge.requestClient("window/showMessageRequest",{ type : type, message : message, actions : [{ title : "OK"}]}).then(null,function(_) {
-			return null;
-		});
-	}
-	flushWarnings() {
-		if(!this.initialized || this.warnings.length == 0) {
-			return;
-		}
-		let _g = 0;
-		let _g1 = this.warnings;
-		while(_g < _g1.length) {
-			let warning = _g1[_g];
-			++_g;
-			bridge_Log.info("warning: " + warning);
-		}
-		this.showMessage(2,this.warnings.join("\n\n"));
-		this.warnings = [];
-	}
-	applyTraceFile() {
-		let file = this.settings.traceFile;
-		let file1 = file != null ? file : process.env["HAXE_ZED_TRACE"];
-		bridge_Log.traceFile = file1 == "" ? null : file1;
-	}
-	describe() {
-		let current = this.project;
-		let haxe = this.toolchain;
-		let target = (current != null ? current.target : null) == null ? "" : " target=" + current.target;
-		let tmp = "project: provider=" + (current != null ? current.provider : null) + target + " args=" + this.describeArgs() + " haxe=";
-		let tmp1 = haxe != null ? haxe.version : null;
-		return tmp + (haxe != null ? haxe.path : null) + " (" + (haxe != null ? haxe.source : null) + ", " + (tmp1 != null ? tmp1 : "version unknown") + ")";
-	}
-	describeTarget() {
-		let current = this.project;
-		if(current == null || current.target == null) {
-			return "";
-		}
-		return " for the " + current.provider + " target \"" + current.target + "\"";
-	}
-	describeArgs() {
-		return this.displayArguments().join(" ");
-	}
 	static isServerDocument(uri) {
 		let lower = uri.toLowerCase();
 		return lower.endsWith(".hx") || lower.endsWith(".hxml");
-	}
-	static addTriggers(triggers) {
-		let _g = 0;
-		let _g1 = bridge_lsp_Rewrites.markupTriggers;
-		while(_g < _g1.length) {
-			let trigger = _g1[_g];
-			++_g;
-			if(!triggers.includes(trigger)) {
-				triggers.push(trigger);
-			}
-		}
-	}
-	static rootPath(params) {
-		if(params.rootUri != null) {
-			return bridge_lsp_Rewrites.uriToPath(params.rootUri);
-		}
-		return params.rootPath;
-	}
-	static uriToPath(uri) {
-		try {
-			return js_node_Url.fileURLToPath(new js_node_url_URL(uri));
-		} catch( _g ) {
-			if(true) {
-				return null;
-			} else {
-				throw _g;
-			}
-		}
-	}
-	static pathToUri(path) {
-		return js_node_Url.pathToFileURL(path).href;
 	}
 }
 bridge_lsp_Rewrites.__name__ = "bridge.lsp.Rewrites";
@@ -3135,7 +2722,7 @@ class bridge_lsp_ServerCache {
 		while(_g3 < _g4.length) {
 			let uri = _g4[_g3];
 			++_g3;
-			let path = bridge_lsp_Rewrites.uriToPath(uri);
+			let path = bridge_util_Uris.toPath(uri);
 			if(path != null && bridge_lsp_ServerCache.isHaxeFile(path) && !changed.includes(path)) {
 				this.runMethod("server/invalidate",{ file : path});
 			}
@@ -3269,6 +2856,476 @@ bridge_lsp_ServerCompiler.__name__ = "bridge.lsp.ServerCompiler";
 Object.assign(bridge_lsp_ServerCompiler.prototype, {
 	__class__: bridge_lsp_ServerCompiler
 });
+class bridge_lsp_Session {
+	constructor(bridge,client,state) {
+		this.resolveAgain = false;
+		this.resolving = false;
+		this.tasksWarned = false;
+		this.userDisplayServer = { };
+		this.onChanged = function() {
+		};
+		this.settings = { };
+		this.workspaceRoot = process.cwd();
+		this.bridge = bridge;
+		this.client = client;
+		this.state = state;
+	}
+	initialize(params) {
+		let tmp = bridge_lsp_Session.rootPath(params);
+		this.workspaceRoot = tmp != null ? tmp : process.cwd();
+		let options;
+		let options1 = params.initializationOptions;
+		options = options1 != null ? options1 : { };
+		let tmp1 = options["project"];
+		this.settings = tmp1 != null ? tmp1 : { };
+		Reflect.deleteField(options,"project");
+		this.userDisplayArguments = options["displayArguments"];
+		let tmp2 = options["displayServerConfig"];
+		this.userDisplayServer = tmp2 != null ? tmp2 : { };
+		this.applyTraceFile();
+		let _gthis = this;
+		return this.resolveProject().then(function(_) {
+			let value = _gthis.displayArguments();
+			options["displayArguments"] = value;
+			let value1 = _gthis.displayServerConfig();
+			options["displayServerConfig"] = value1;
+			bridge_Log.info(_gthis.describe());
+			_gthis.writeTasks();
+			return options;
+		});
+	}
+	updateSettings(next) {
+		if(JSON.stringify(next) != JSON.stringify(this.settings)) {
+			this.settings = next;
+			this.applyTraceFile();
+			this.scheduleReresolve("settings changed");
+		}
+	}
+	pickTarget(target) {
+		this.targetOverride = target;
+		this.state.setTarget(this.projectRoot(),target);
+		this.scheduleReresolve("target \"" + target + "\" picked");
+	}
+	pickBuildType(buildType) {
+		this.buildTypeOverride = buildType;
+		this.state.setBuildType(this.projectRoot(),buildType);
+		this.scheduleReresolve("build type \"" + buildType + "\" picked");
+	}
+	filesChanged(paths) {
+		let _g = 0;
+		while(_g < paths.length) {
+			let path = paths[_g];
+			++_g;
+			if(this.isProjectFile(path)) {
+				this.scheduleReresolve("" + haxe_io_Path.withoutDirectory(path) + " changed");
+				return;
+			}
+		}
+	}
+	projectRoot() {
+		if(this.settings.root == null) {
+			return this.workspaceRoot;
+		} else {
+			return haxe_io_Path.join([this.workspaceRoot,this.settings.root]);
+		}
+	}
+	markupEnabled() {
+		return this.settings.markup != false;
+	}
+	displayArguments() {
+		let userArgs = this.userDisplayArguments;
+		if(userArgs != null) {
+			return userArgs;
+		}
+		let current = this.project;
+		if(current == null) {
+			return [];
+		}
+		if(!this.supportsDocPacks() || current.docs.length == 0) {
+			return current.args;
+		}
+		return bridge_project_DocPacks.macros(current.docs,current.args,this.projectRoot(),haxe_io_Path.join([this.state.dir,"docs"])).concat(current.args);
+	}
+	currentBuildType() {
+		let tmp = this.project;
+		let types = tmp != null ? tmp.buildTypes : null;
+		let types1 = types != null ? types : [];
+		let chosen = this.effectiveSettings().buildType;
+		let tmp1 = chosen;
+		if(tmp1 != null) {
+			return tmp1;
+		} else if(types1.includes("release")) {
+			return "release";
+		} else {
+			return null;
+		}
+	}
+	libraryNames() {
+		let names = [];
+		let scoped = haxe_io_Path.join([this.projectRoot(),"haxe_libraries"]);
+		if(sys_FileSystem.exists(scoped)) {
+			let _g = 0;
+			let _g1 = js_node_Fs.readdirSync(scoped);
+			while(_g < _g1.length) {
+				let file = _g1[_g];
+				++_g;
+				if(file.endsWith(".hxml")) {
+					names.push(haxe_io_Path.withoutExtension(file));
+				}
+			}
+		}
+		let env = Reflect.copy(process.env);
+		let tmp = this.toolchain;
+		let tmp1 = tmp != null ? tmp.env : null;
+		let access = tmp1 != null ? tmp1 : { };
+		let _g_access = access;
+		let _g_keys = Reflect.fields(access);
+		let _g_index = 0;
+		while(_g_index < _g_keys.length) {
+			let key = _g_keys[_g_index++];
+			let _g_value = _g_access[key];
+			let _g_key = key;
+			let key1 = _g_key;
+			let value = _g_value;
+			env[key1] = value;
+		}
+		return bridge_util_Exec.run([this.haxelibExecutable(),"list"],{ cwd : this.projectRoot(), env : env, timeout : 20000}).then(function(result) {
+			let _g = 0;
+			let _g1 = result.stdout.split("\n");
+			while(_g < _g1.length) {
+				let line = _g1[_g];
+				++_g;
+				let colon = line.indexOf(":");
+				if(colon > 0) {
+					let name = StringTools.trim(HxOverrides.substr(line,0,colon));
+					if(!names.includes(name)) {
+						names.push(name);
+					}
+				}
+			}
+			return names;
+		},function(_) {
+			return names;
+		});
+	}
+	describe() {
+		let current = this.project;
+		let haxe = this.toolchain;
+		let target = (current != null ? current.target : null) == null ? "" : " target=" + current.target;
+		let tmp = "project: provider=" + (current != null ? current.provider : null) + target + " args=" + this.describeArgs() + " haxe=";
+		let tmp1 = haxe != null ? haxe.version : null;
+		return tmp + (haxe != null ? haxe.path : null) + " (" + (haxe != null ? haxe.source : null) + ", " + (tmp1 != null ? tmp1 : "version unknown") + ")";
+	}
+	describeTarget() {
+		let current = this.project;
+		if(current == null || current.target == null) {
+			return "";
+		}
+		return " for the " + current.provider + " target \"" + current.target + "\"";
+	}
+	describeArgs() {
+		return this.displayArguments().join(" ");
+	}
+	isProjectFile(path) {
+		let current = this.project;
+		if(current == null) {
+			return false;
+		}
+		let name = haxe_io_Path.withoutDirectory(path);
+		return name == ".haxerc" || current.watch.includes(name) || current.provider == "hxml" && name.endsWith(".hxml") || current.file != null && haxe_io_Path.normalize(current.file) == haxe_io_Path.normalize(path);
+	}
+	scheduleReresolve(reason) {
+		if(this.reresolveTimer != null) {
+			this.reresolveTimer.stop();
+		}
+		let _gthis = this;
+		this.reresolveTimer = haxe_Timer.delay(function() {
+			_gthis.reresolve(reason);
+		},300);
+	}
+	reresolve(reason) {
+		if(this.resolving) {
+			this.resolveAgain = true;
+			return;
+		}
+		this.resolving = true;
+		let argsBefore = JSON.stringify(this.displayArguments());
+		let serverBefore = JSON.stringify(this.displayServerConfig());
+		let toolchainBefore = this.toolchain;
+		let done = this.client.startProgress("Haxe: updating project (" + reason + ")");
+		let _gthis = this;
+		this.resolveProject().then(function(_) {
+			if(JSON.stringify(_gthis.displayServerConfig()) != serverBefore) {
+				if(_gthis.needsFullRestart(toolchainBefore,_gthis.toolchain)) {
+					let tmp = _gthis.toolchain;
+					_gthis.client.showMessage(2,"Haxe changed from " + (toolchainBefore != null ? toolchainBefore.version : null) + " to " + (tmp != null ? tmp.version : null) + ". " + "Restart the language server to use it: haxe-language-server can't switch a Haxe 4 project with a .haxerc to Haxe 5 in place.");
+					_gthis.toolchain = toolchainBefore;
+				} else {
+					_gthis.bridge.notifyServer("haxe/didChangeDisplayServerConfig",_gthis.displayServerConfig());
+				}
+			}
+			if(JSON.stringify(_gthis.displayArguments()) != argsBefore) {
+				_gthis.bridge.notifyServer("haxe/didChangeDisplayArguments",{ 'arguments' : _gthis.displayArguments()});
+			}
+			bridge_Log.info(_gthis.describe());
+			_gthis.writeTasks();
+			_gthis.onChanged();
+			done();
+			_gthis.client.flushWarnings();
+			_gthis.resolving = false;
+			if(_gthis.resolveAgain) {
+				_gthis.resolveAgain = false;
+				_gthis.reresolve("further changes");
+			}
+		});
+	}
+	needsFullRestart(before,after) {
+		return before != null && after != null && before.major < 5 && after.major >= 5 && sys_FileSystem.exists(haxe_io_Path.join([this.workspaceRoot,".haxerc"]));
+	}
+	resolveProject() {
+		let root = this.projectRoot();
+		let ctx = { workspaceRoot : this.workspaceRoot, projectRoot : root, settings : this.effectiveSettings(), env : process.env};
+		let _gthis = this;
+		return bridge_project_ProjectResolver.resolve(ctx,this.state.target(root)).then(function(resolved) {
+			_gthis.project = resolved;
+			let haxerc = bridge_toolchain_Haxerc.find(root,_gthis.workspaceRoot);
+			_gthis.toolchain = bridge_toolchain_Toolchain.resolve({ workspaceRoot : _gthis.workspaceRoot, projectRoot : root, haxerc : haxerc != null ? haxerc.data : null, providerHaxePath : resolved.haxePath, env : process.env},_gthis.settings);
+			let _g = 0;
+			let _g1 = resolved.warnings.concat(_gthis.toolchain.notes);
+			while(_g < _g1.length) {
+				let warning = _g1[_g];
+				++_g;
+				_gthis.client.warn(warning);
+			}
+			if((haxerc != null ? haxerc.data.resolveLibs : null) == "scoped" && _gthis.toolchain.source != "lix") {
+				_gthis.client.warn("" + haxerc.path + " uses lix-style libraries (haxe_libraries/), but Haxe comes from " + _gthis.toolchain.source + ". " + "If libraries are missing, run `hx lix-libs` (haxe-manager) or install lix.");
+			}
+			return true;
+		},function(error) {
+			_gthis.client.warn("Haxe project detection failed: " + Std.string(error));
+			return true;
+		});
+	}
+	displayServerConfig() {
+		let haxe = this.toolchain;
+		let env = haxe == null ? { } : Reflect.copy(haxe.env);
+		let userEnv = this.userDisplayServer["env"];
+		if(userEnv != null) {
+			let access = userEnv;
+			let _g_access = access;
+			let _g_keys = Reflect.fields(access);
+			let _g_index = 0;
+			while(_g_index < _g_keys.length) {
+				let key = _g_keys[_g_index++];
+				let _g_value = _g_access[key];
+				let _g_key = key;
+				let key1 = _g_key;
+				let value = _g_value;
+				env[key1] = value;
+			}
+		}
+		let path = haxe == null ? "haxe" : haxe.path;
+		let config = { path : path.indexOf(" ") >= 0 ? "\"" + path + "\"" : path, env : env, 'arguments' : [], useSocket : true, print : { completion : false, reusing : false}};
+		let access = this.userDisplayServer;
+		let _g_access = access;
+		let _g_keys = Reflect.fields(access);
+		let _g_index = 0;
+		while(_g_index < _g_keys.length) {
+			let key = _g_keys[_g_index++];
+			let _g_value = _g_access[key];
+			let _g_key = key;
+			let key1 = _g_key;
+			let value = _g_value;
+			if(key1 != "env") {
+				config[key1] = value;
+			}
+		}
+		return config;
+	}
+	supportsDocPacks() {
+		let tmp = this.toolchain;
+		let version = tmp != null ? tmp.version : null;
+		if(version == null) {
+			return false;
+		}
+		let _this = version.split(".");
+		let f = Std.parseInt;
+		let result = new Array(_this.length);
+		let _g = 0;
+		let _g1 = _this.length;
+		while(_g < _g1) {
+			let i = _g++;
+			result[i] = f(_this[i]);
+		}
+		let parts = result;
+		return parts[0] > 4 || parts[0] == 4 && parts[1] >= 3;
+	}
+	effectiveSettings() {
+		let effective = Reflect.copy(this.settings);
+		let effective1 = effective != null ? effective : { };
+		let tmp = this.targetOverride;
+		effective1.target = tmp != null ? tmp : this.settings.target;
+		let tmp1 = this.buildTypeOverride;
+		let tmp2 = tmp1 != null ? tmp1 : this.settings.buildType;
+		effective1.buildType = tmp2 != null ? tmp2 : this.state.buildType(this.projectRoot());
+		return effective1;
+	}
+	writeTasks() {
+		let current = this.project;
+		if(this.settings.tasks == false || current == null || current.tasks.length == 0) {
+			return;
+		}
+		let haxe = this.toolchain;
+		let fromPath = haxe == null || haxe.source == "path" || haxe.source == "default";
+		let content = bridge_lsp_ZedTasks.render(current.tasks,this.workspaceRoot,{ haxe : fromPath ? "haxe" : haxe.path, haxelib : fromPath ? "haxelib" : this.haxelibExecutable(), env : fromPath ? { } : haxe.env},current.target);
+		try {
+			switch(bridge_lsp_ZedTasks.write(this.workspaceRoot,content)._hx_index) {
+			case 0:
+				bridge_Log.info("wrote " + current.tasks.length + " tasks to " + bridge_lsp_ZedTasks.path(this.workspaceRoot));
+				break;
+			case 2:
+				if(!this.tasksWarned) {
+					this.tasksWarned = true;
+					bridge_Log.info("" + bridge_lsp_ZedTasks.path(this.workspaceRoot) + " is your own file, so the Haxe tasks were not written to it");
+				}
+				break;
+			default:
+			}
+		} catch( _g ) {
+			let _g1 = haxe_Exception.caught(_g);
+			if(true) {
+				let e = _g1;
+				bridge_Log.info("could not write " + bridge_lsp_ZedTasks.path(this.workspaceRoot) + ": " + Std.string(e));
+			} else {
+				throw _g;
+			}
+		}
+	}
+	haxelibExecutable() {
+		let tmp = this.toolchain;
+		let haxe = tmp != null ? tmp.path : null;
+		if(haxe != null && haxe_io_Path.isAbsolute(haxe)) {
+			let sibling = bridge_util_Files.executableIn(haxe_io_Path.directory(haxe),"haxelib");
+			if(sibling != null) {
+				return sibling;
+			}
+		}
+		return "haxelib";
+	}
+	applyTraceFile() {
+		let file = this.settings.traceFile;
+		let file1 = file != null ? file : process.env["HAXE_ZED_TRACE"];
+		bridge_Log.traceFile = file1 == "" ? null : file1;
+	}
+	static rootPath(params) {
+		if(params.rootUri != null) {
+			return bridge_util_Uris.toPath(params.rootUri);
+		}
+		return params.rootPath;
+	}
+}
+bridge_lsp_Session.__name__ = "bridge.lsp.Session";
+Object.assign(bridge_lsp_Session.prototype, {
+	__class__: bridge_lsp_Session
+});
+class bridge_lsp_TargetCommands {
+	constructor(bridge,client,session) {
+		this.bridge = bridge;
+		this.client = client;
+		this.session = session;
+	}
+	list() {
+		let commands = ["Haxe: choose target"];
+		let current = this.session.project;
+		if(current == null) {
+			return commands;
+		}
+		let _g = 0;
+		let _g1 = current.targets;
+		while(_g < _g1.length) {
+			let name = _g1[_g];
+			++_g;
+			commands.push("Haxe: target " + name + (name == current.target ? " (current)" : ""));
+		}
+		let chosen = this.session.currentBuildType();
+		let _g2 = 0;
+		let _g3 = current.buildTypes;
+		while(_g2 < _g3.length) {
+			let type = _g3[_g2];
+			++_g2;
+			commands.push("Haxe: build type " + type + (type == chosen ? " (current)" : ""));
+		}
+		return commands;
+	}
+	declare(serverCommands) {
+		let commands = serverCommands.concat(this.list());
+		this.registered = JSON.stringify(commands);
+		return commands;
+	}
+	update() {
+		let commands = this.list();
+		let json = JSON.stringify(commands);
+		if(json == this.registered || !this.client.registersDynamically(["workspace","executeCommand"])) {
+			return;
+		}
+		this.registered = json;
+		this.bridge.requestClient("client/registerCapability",{ registrations : [{ id : "haxe-zed-commands", method : "workspace/executeCommand", registerOptions : { commands : commands}}]}).then(null,function(error) {
+			bridge_Log.info("Zed refused the command list: " + JSON.stringify(error));
+		});
+	}
+	handles(command) {
+		return command == "Haxe: choose target" || command == "haxe.selectTarget" || bridge_lsp_TargetCommands.target.match(command) || bridge_lsp_TargetCommands.buildType.match(command);
+	}
+	run(command) {
+		if(bridge_lsp_TargetCommands.target.match(command)) {
+			this.session.pickTarget(bridge_lsp_TargetCommands.target.matched(1));
+		} else if(bridge_lsp_TargetCommands.buildType.match(command)) {
+			this.session.pickBuildType(bridge_lsp_TargetCommands.buildType.matched(1));
+		} else {
+			this.prompt();
+		}
+	}
+	promptOnce() {
+		let tmp = this.session.project;
+		if((tmp != null ? tmp.provider : null) != "hxml" && !this.session.state.wasPrompted(this.session.projectRoot()) && this.session.settings.target == null) {
+			this.prompt();
+		}
+	}
+	prompt() {
+		let current = this.session.project;
+		if(current == null || current.targets.length < 2) {
+			return;
+		}
+		this.session.state.setPrompted(this.session.projectRoot());
+		let targets = current.targets.slice(0,12);
+		let _gthis = this;
+		let tmp = this.bridge;
+		let tmp1 = "Haxe: using the " + current.provider + " target \"" + current.target + "\". Pick another target, or set `project.target` in your settings.";
+		let _g = [];
+		let _g1 = 0;
+		while(_g1 < targets.length) {
+			let name = targets[_g1];
+			++_g1;
+			_g.push({ title : name});
+		}
+		tmp.requestClient("window/showMessageRequest",{ type : 3, message : tmp1, actions : _g}).then(function(choice) {
+			if(choice == null) {
+				return;
+			}
+			if(choice.title == current.target) {
+				_gthis.session.state.setTarget(_gthis.session.projectRoot(),choice.title);
+			} else {
+				_gthis.session.pickTarget(choice.title);
+			}
+		},function(error) {
+			bridge_Log.info("target prompt failed: " + JSON.stringify(error));
+		});
+	}
+}
+bridge_lsp_TargetCommands.__name__ = "bridge.lsp.TargetCommands";
+Object.assign(bridge_lsp_TargetCommands.prototype, {
+	__class__: bridge_lsp_TargetCommands
+});
 class bridge_lsp_WorkspaceSymbols {
 	static handle(bridge,message) {
 		let filter = message.params.query;
@@ -3280,7 +3337,7 @@ class bridge_lsp_WorkspaceSymbols {
 			while(_g < _g1.length) {
 				let entry = _g1[_g];
 				++_g;
-				let uri = bridge_lsp_Rewrites.pathToUri(entry.file);
+				let uri = bridge_util_Uris.fromPath(entry.file);
 				let _g2 = 0;
 				let _g3 = entry.symbols;
 				while(_g2 < _g3.length) {
@@ -5521,6 +5578,23 @@ class bridge_util_HaxeTypes {
 	}
 }
 bridge_util_HaxeTypes.__name__ = "bridge.util.HaxeTypes";
+class bridge_util_Uris {
+	static toPath(uri) {
+		try {
+			return js_node_Url.fileURLToPath(new js_node_url_URL(uri));
+		} catch( _g ) {
+			if(true) {
+				return null;
+			} else {
+				throw _g;
+			}
+		}
+	}
+	static fromPath(path) {
+		return js_node_Url.pathToFileURL(path).href;
+	}
+}
+bridge_util_Uris.__name__ = "bridge.util.Uris";
 class bridge_util_Vars {
 	static expand(text,values) {
 		return bridge_util_Vars.placeholder.map(text,function(re) {
@@ -7038,9 +7112,10 @@ bridge_lsp_CompilerDocs.platformDefines = ["cpp","cs","eval","flash","hl","inter
 bridge_lsp_Ranking.declaredIn = new EReg("\n\\s*from [a-z ]+ '([^']+)'","");
 bridge_lsp_Ranking.classDeclaration = new EReg("^[ \t]*(?:(?:private|final|extern|abstract|enum)\\s+)*(?:class|interface|abstract)\\s+([A-Za-z_]\\w*)","m");
 bridge_lsp_Ranking.memberDeclaration = new EReg("\\b(?:var|final|function)\\s+([A-Za-z_]\\w*)","g");
-bridge_lsp_Rewrites.targetCommand = new EReg("^Haxe: target (.+?)( \\(current\\))?$","");
-bridge_lsp_Rewrites.buildTypeCommand = new EReg("^Haxe: build type (.+?)( \\(current\\))?$","");
-bridge_lsp_Rewrites.markupTriggers = ["<","\"","/"];
+bridge_lsp_Registrations.markupTriggers = ["<","\"","/"];
+bridge_lsp_Registrations.declaredUpFront = ["textDocument/typeDefinition","textDocument/implementation"];
+bridge_lsp_TargetCommands.target = new EReg("^Haxe: target (.+?)( \\(current\\))?$","");
+bridge_lsp_TargetCommands.buildType = new EReg("^Haxe: build type (.+?)( \\(current\\))?$","");
 bridge_lsp_ZedTasks.header = ["// Generated by the Haxe extension from the detected project, and kept up to date when targets change.","// To keep your own tasks here instead, delete these comment lines; the extension then leaves this file alone.","// To stop generating it, set \"project\": { \"tasks\": false } in the haxe-language-server settings."];
 bridge_markup_HaxeUiProvider.notLayouts = ["project.xml","include.xml","haxelib.xml","androidmanifest.xml"];
 bridge_markup_HaxeUiProvider.fieldAliases = (function($this) {

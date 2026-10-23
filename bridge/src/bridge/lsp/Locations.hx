@@ -1,6 +1,7 @@
 package bridge.lsp;
 
 import bridge.rpc.Message;
+import bridge.util.Uris;
 
 /**
 	Answers Go to Type Definition and Go to Implementation through `haxe/runMethod`.
@@ -13,7 +14,7 @@ class Locations {
 	public static function handle(bridge:Router, documents:Documents, message:Message, haxeMethod:String) {
 		final uri:String = message.params.textDocument.uri;
 		final text = documents.text(uri);
-		final path = Rewrites.uriToPath(uri);
+		final path = Uris.toPath(uri);
 		if (text == null || path == null) {
 			bridge.toServer(message);
 			return;

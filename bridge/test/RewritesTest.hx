@@ -2,6 +2,7 @@ import bridge.Router;
 import bridge.State;
 import bridge.lsp.Rewrites;
 import bridge.rpc.Message;
+import bridge.util.Uris;
 import haxe.Timer;
 import haxe.io.Path;
 import js.lib.Promise;
@@ -192,7 +193,7 @@ class RewritesTest extends utest.Test {
 		final dir = Fixture.create({"src/Hello.hx": ""});
 		final router = new RecordingRouter();
 		final rewrites = initialize(router, dir, {args: ["--library", "haxeui-core"], haxePath: "/fake/haxe"});
-		final uri = Rewrites.pathToUri('$dir/src/Hello.hx');
+		final uri = Uris.fromPath('$dir/src/Hello.hx');
 		final text = "@:xml('<vbox><but')\nclass Hello extends VBox {\n\tfunction f() {}\n}";
 		waitFor(() -> router.sentToServer("initialize") != null, function() {
 			rewrites.fromClient({method: "textDocument/didOpen", params: {textDocument: {uri: uri, text: text, languageId: "haxe", version: 1}}});
@@ -220,7 +221,7 @@ class RewritesTest extends utest.Test {
 		final dir = Fixture.create({"build.hxml": ""});
 		final router = new RecordingRouter();
 		final rewrites = initialize(router, dir, {haxePath: "/fake/haxe"});
-		final uri = Rewrites.pathToUri('$dir/assets/main.xml');
+		final uri = Uris.fromPath('$dir/assets/main.xml');
 		waitFor(() -> router.sentToServer("initialize") != null, function() {
 			final before = router.server.length;
 			rewrites.fromClient({method: "textDocument/didOpen", params: {textDocument: {uri: uri, text: "<vbox />", languageId: "xml", version: 1}}});
@@ -268,7 +269,7 @@ class RewritesTest extends utest.Test {
 			id: 1,
 			method: "initialize",
 			params: {
-				rootUri: Rewrites.pathToUri(dir),
+				rootUri: Uris.fromPath(dir),
 				capabilities: {textDocument: {completion: {dynamicRegistration: true}, hover: {dynamicRegistration: true}}},
 				initializationOptions: {project: {haxePath: "/fake/haxe"}}
 			}
@@ -301,7 +302,7 @@ class RewritesTest extends utest.Test {
 			id: 1,
 			method: "initialize",
 			params: {
-				rootUri: Rewrites.pathToUri(dir),
+				rootUri: Uris.fromPath(dir),
 				capabilities: {workspace: {executeCommand: {dynamicRegistration: true}}},
 				initializationOptions: {project: {haxePath: "/fake/haxe", providers: [provider]}}
 			}
@@ -338,7 +339,7 @@ class RewritesTest extends utest.Test {
 		rewrites.fromClient({
 			id: 1,
 			method: "initialize",
-			params: {rootUri: Rewrites.pathToUri(dir), capabilities: {}, initializationOptions: {project: project}}
+			params: {rootUri: Uris.fromPath(dir), capabilities: {}, initializationOptions: {project: project}}
 		});
 		return rewrites;
 	}

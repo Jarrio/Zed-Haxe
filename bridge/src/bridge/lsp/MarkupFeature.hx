@@ -6,8 +6,9 @@ import bridge.markup.HaxeUiProvider;
 import bridge.markup.MarkupProvider;
 import bridge.markup.XmlCursor;
 import bridge.project.Hxml;
-import bridge.util.Files;
 import bridge.rpc.Message;
+import bridge.util.Files;
+import bridge.util.Uris;
 import haxe.Json;
 import haxe.io.Path;
 import js.lib.Promise;
@@ -88,7 +89,7 @@ class MarkupFeature {
 	public function handleHaxe(message:Message):Bool {
 		final uri:String = message.params.textDocument.uri;
 		final text = documents.text(uri);
-		final path = Rewrites.uriToPath(uri);
+		final path = Uris.toPath(uri);
 		if (text == null || path == null || text.indexOf("@:") < 0) {
 			return false;
 		}
@@ -114,7 +115,7 @@ class MarkupFeature {
 	public function handleFile(message:Message) {
 		final uri:String = message.params.textDocument.uri;
 		final text = documents.text(uri);
-		final path = Rewrites.uriToPath(uri);
+		final path = Uris.toPath(uri);
 		if (text == null || path == null) {
 			bridge.replyToClient(message.id, null);
 			return;
@@ -378,7 +379,7 @@ class MarkupFeature {
 				final method = '\n\tfunction haxeZedProbe() { $declarations{ $before';
 				final rest = '$after; } }\n';
 				final edits:Array<TextEdit> = [];
-				if (Rewrites.uriToPath(at.uri) == host.file && !parses(markup)) {
+				if (Uris.toPath(at.uri) == host.file && !parses(markup)) {
 					// HaxeUI's build macro parses @:xml, so while a tag is half typed the class doesn't compile and the
 					// probe finds nothing. The ids are locals of the probe already, so its root element is enough.
 					edits.push({at: at.region.start, removed: at.region.end - at.region.start, text: rootOnly(markup)});
@@ -448,7 +449,7 @@ class MarkupFeature {
 
 	/** Locations Haxe gave in the probe's text, moved to where they are in the real file. **/
 	static function realLocations(code:Probe, locations:Array<Dynamic>):Array<Dynamic> {
-		final uri = Rewrites.pathToUri(code.file);
+		final uri = Uris.fromPath(code.file);
 		for (location in locations) {
 			if (location.uri == uri) {
 				final start = toOriginal(code.edits, Documents.offsetAt(code.text, location.range.start));
@@ -635,7 +636,7 @@ class MarkupFeature {
 	}
 
 	function readFile(path:String):Null<String> {
-		final open = documents.text(Rewrites.pathToUri(path));
+		final open = documents.text(Uris.fromPath(path));
 		if (open != null) {
 			return open;
 		}

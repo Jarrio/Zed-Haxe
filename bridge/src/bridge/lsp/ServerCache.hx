@@ -1,5 +1,7 @@
 package bridge.lsp;
 
+import bridge.util.Uris;
+
 /**
 	Keeps the compilation server's cache in step with Haxe files changed outside the one being edited.
 
@@ -31,7 +33,7 @@ class ServerCache {
 		}
 		runMethod("server/configure", {noModuleChecks: false});
 		for (uri in documents.uris()) {
-			final path = Rewrites.uriToPath(uri);
+			final path = Uris.toPath(uri);
 			if (path != null && isHaxeFile(path) && !changed.contains(path)) {
 				runMethod("server/invalidate", {file: path});
 			}

@@ -1,6 +1,7 @@
 package bridge.lsp;
 
 import bridge.rpc.Message;
+import bridge.util.Uris;
 
 private typedef ModuleSymbol = {
 	var name:String;
@@ -23,7 +24,7 @@ class WorkspaceSymbols {
 		}).then(function(entries:Null<Array<{file:String, symbols:Array<ModuleSymbol>}>>) {
 			final result = [];
 			for (entry in entries ?? []) {
-				final uri = Rewrites.pathToUri(entry.file);
+				final uri = Uris.fromPath(entry.file);
 				for (symbol in entry.symbols) {
 					if (symbol.range == null) {
 						continue;
