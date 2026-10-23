@@ -1,6 +1,6 @@
 // End-to-end tests: real bridge, real haxe-language-server, real Haxe, driven the way Zed drives them.
 //
-//   node e2e/run.js [suite names...] [--haxe=PATH] [--server=PATH] [--trace=FILE] [--verbose]
+//   node e2e/run.js [suite names...] [--haxe=PATH] [--server=PATH] [--bridge=PATH] [--trace=FILE] [--verbose]
 //
 // Suites are e2e/suites/*.json. Projects in e2e/projects run anywhere; suites whose project starts with
 // ${TEST_PROJECTS}/ need that environment variable (a folder of real projects with their libraries
@@ -59,14 +59,22 @@ async function runSuite(suite, projectDir, serverJs) {
   if (option("trace")) settings.traceFile = path.resolve(option("trace"));
   // A state folder of its own, so targets picked by an earlier run don't carry over.
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "haxe-zed-e2e-"));
-  const client = new Client({ serverJs, projectDir, settings, haxeSettings: suite.haxeSettings, env: { HAXE_ZED_STATE_DIR: stateDir } });
+  const client = new Client({
+    serverJs,
+    bridgeJs: option("bridge") && path.resolve(option("bridge")),
+    projectDir,
+    settings,
+    haxeSettings: suite.haxeSettings,
+    env: { HAXE_ZED_STATE_DIR: stateDir },
+    openAtStart: suite.openAtStart,
+  });
   if (verbose) client.onStderr = (line) => console.log(`    | ${line}`);
   let passed = 0, failed = 0;
   try {
     await client.start();
     const described = client.stderr.find((line) => line.includes("project: provider="));
     console.log(`${suite.name} (ready in ${client.readyAfter} ms)` + (described ? `\n    ${described.replace(/^.*project: /, "").slice(0, 160)}` : ""));
-    const main = client.open(suite.open);
+    const main = client.documents.get(suite.open) ?? client.open(suite.open);
     await sleep(1000);
     for (const step of suite.steps) {
       try {

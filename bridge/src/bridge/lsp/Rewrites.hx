@@ -39,6 +39,12 @@ class Rewrites {
 	/** Zed messages that arrive while `initialize` waits for project detection. **/
 	var held:Null<Array<Message>>;
 
+	/** The Haxe document opened last, as far as the bridge can tell the one in front. **/
+	var lastOpened:Null<String>;
+
+	/** The server's progress titles by token, to tell when its completion cache is built. **/
+	final progressTitles = new Map<String, String>();
+
 	public function new(bridge:Router, ?state:State) {
 		this.bridge = bridge;
 		client = new Client(bridge);
@@ -83,6 +89,7 @@ class Rewrites {
 				documents.open(message.params.textDocument.uri, message.params.textDocument.text);
 				bridge.toServer(message);
 				serverCache.documentOpened();
+				lastOpened = message.params.textDocument.uri;
 				// VS Code sends this on every tab switch; the server uses it for diagnostics and `package` completion.
 				bridge.notifyServer("haxe/didChangeActiveTextEditor", {uri: message.params.textDocument.uri});
 			case "textDocument/didChange":
@@ -91,6 +98,9 @@ class Rewrites {
 			case "textDocument/didClose":
 				documents.close(message.params.textDocument.uri);
 				bridge.toServer(message);
+				if (lastOpened == message.params.textDocument.uri) {
+					lastOpened = null;
+				}
 			case "textDocument/didSave":
 				bridge.toServer(message);
 				final path = Uris.toPath(message.params.textDocument.uri);
@@ -166,16 +176,38 @@ class Rewrites {
 					? 'Haxe ${message.params.version} is a Haxe 4 preview, which haxe-language-server only partly supports. Use a Haxe 4 release or newer.'
 					: 'Haxe ${message.params.version} is older than Haxe 4, so haxe-language-server falls back to a limited mode. Use Haxe 4 or newer.');
 			case "$/progress":
-				// The server's progress is its completion cache being built ("Haxe: Building Cache...").
-				if (message.params?.value?.kind == "begin") {
-					serverCache.cacheRebuilding();
-				}
+				onServerProgress(message.params);
 				bridge.toClient(message);
 			case "haxe/didRunHaxeMethod" | "haxe/didChangeRequestQueue" | "haxe/didChangeDisplayPort" | "haxe/didRunGlobalDiagnostics" |
 				"haxe/executeClientCommand":
 				// Feed vshaxe's VS Code views; Zed has nowhere to show them.
 			case _:
 				bridge.toClient(message);
+		}
+	}
+
+	/**
+		The server builds its completion cache when Haxe (re)starts and when the display arguments change
+		("Haxe: Building Cache..."). The build reads the project from disk, and files opened before it
+		finished (tabs Zed restores at startup) never got their diagnostics: the server only checks files
+		as they open. Announcing the front document again, as VS Code does on focus, makes it check them.
+	**/
+	function onServerProgress(params:Dynamic) {
+		final token = Std.string(params?.token);
+		switch params?.value?.kind {
+			case "begin":
+				progressTitles.set(token, params.value.title ?? "");
+				serverCache.cacheRebuilding();
+			case "end":
+				final title = progressTitles.get(token);
+				progressTitles.remove(token);
+				if (title != null && title.indexOf("Building Cache") >= 0 && lastOpened != null) {
+					// The server skips this within 0.1 s of the document opening (it checked it then), and a
+					// small project builds its cache faster than that.
+					final front = lastOpened;
+					haxe.Timer.delay(() -> bridge.notifyServer("haxe/didChangeActiveTextEditor", {uri: front}), 200);
+				}
+			case _:
 		}
 	}
 

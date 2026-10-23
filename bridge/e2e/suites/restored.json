@@ -1,0 +1,18 @@
+{
+	"name": "Tabs restored at startup",
+	"project": "projects/hxml",
+	"open": "src/Broken.hx",
+	"openAtStart": [
+		"src/Broken.hx"
+	],
+	"steps": [
+		{
+			"name": "a file open before the server was ready gets its diagnostics",
+			"do": "diagnostics",
+			"expect": {
+				"atLeast": 2,
+				"contains": "missingFunction"
+			}
+		}
+	]
+}

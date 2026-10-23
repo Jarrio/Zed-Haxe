@@ -45,6 +45,7 @@ class Client {
    * @param {object} [options.initOptions] extra initializationOptions
    * @param {number} [options.timeout] milliseconds before a request counts as unanswered
    * @param {object} [options.env] extra environment variables for the bridge
+   * @param {string[]} [options.openAtStart] files to open before the server is ready, as Zed does with restored tabs
    */
   constructor(options) {
     this.options = options;
@@ -95,6 +96,7 @@ class Client {
     });
     this.notify("initialized", {});
     this.notify("workspace/didChangeConfiguration", { settings: { project: this.options.settings ?? {}, haxe: this.options.haxeSettings ?? {} } });
+    for (const file of this.options.openAtStart ?? []) this.open(file);
     for (let i = 0; i < 1200 && this.progressEnded === 0; i++) await sleep(100);
     this.readyAfter = Date.now() - started;
     await sleep(300);

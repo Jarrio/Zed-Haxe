@@ -2358,6 +2358,7 @@ Object.assign(bridge_lsp_Registrations.prototype, {
 });
 class bridge_lsp_Rewrites {
 	constructor(bridge,state) {
+		this.progressTitles = new haxe_ds_StringMap();
 		this.completionRequests = new haxe_ds_StringMap();
 		this.docRequests = new haxe_ds_StringMap();
 		this.documents = new bridge_lsp_Documents();
@@ -2435,11 +2436,15 @@ class bridge_lsp_Rewrites {
 			case "textDocument/didClose":
 				this.documents.close(message.params.textDocument.uri);
 				this.bridge.toServer(message);
+				if(this.lastOpened == message.params.textDocument.uri) {
+					this.lastOpened = null;
+				}
 				break;
 			case "textDocument/didOpen":
 				this.documents.open(message.params.textDocument.uri,message.params.textDocument.text);
 				this.bridge.toServer(message);
 				this.serverCache.documentOpened();
+				this.lastOpened = message.params.textDocument.uri;
 				this.bridge.notifyServer("haxe/didChangeActiveTextEditor",{ uri : message.params.textDocument.uri});
 				break;
 			case "textDocument/didSave":
@@ -2529,11 +2534,7 @@ class bridge_lsp_Rewrites {
 		} else {
 			switch(_g) {
 			case "$/progress":
-				let tmp = message.params;
-				let tmp1 = tmp != null ? tmp.value : null;
-				if((tmp1 != null ? tmp1.kind : null) == "begin") {
-					this.serverCache.cacheRebuilding();
-				}
+				this.onServerProgress(message.params);
 				this.bridge.toClient(message);
 				break;
 			case "client/registerCapability":
@@ -2570,6 +2571,35 @@ class bridge_lsp_Rewrites {
 				break;
 			default:
 				this.bridge.toClient(message);
+			}
+		}
+	}
+	onServerProgress(params) {
+		let token = Std.string(params != null ? params.token : null);
+		let _gthis = this;
+		let tmp = params != null ? params.value : null;
+		let _g = tmp != null ? tmp.kind : null;
+		if(_g != null) {
+			switch(_g) {
+			case "begin":
+				let tmp1 = params.value.title;
+				this.progressTitles.h[token] = tmp1 != null ? tmp1 : "";
+				this.serverCache.cacheRebuilding();
+				break;
+			case "end":
+				let title = this.progressTitles.h[token];
+				let _this = this.progressTitles;
+				if(Object.prototype.hasOwnProperty.call(_this.h,token)) {
+					delete(_this.h[token]);
+				}
+				if(title != null && title.indexOf("Building Cache") >= 0 && this.lastOpened != null) {
+					let front = this.lastOpened;
+					haxe_Timer.delay(function() {
+						_gthis.bridge.notifyServer("haxe/didChangeActiveTextEditor",{ uri : front});
+					},200);
+				}
+				break;
+			default:
 			}
 		}
 	}
