@@ -1,0 +1,8 @@
+[
+	{
+		"label": "haxe: $ZED_FILENAME",
+		"command": "haxe",
+		"args": ["$ZED_FILENAME"],
+		"cwd": "$ZED_DIRNAME"
+	}
+]

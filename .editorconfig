@@ -18,3 +18,6 @@ indent_size = 4
 # The bridge follows the usual Haxe style (haxe-formatter's defaults).
 [bridge/**.{hx,hxml,json}]
 indent_style = tab
+
+[languages/*/tasks.json]
+indent_style = tab
