@@ -89,11 +89,15 @@ class CeramicProvider implements ProjectProvider {
 		for (target in targets) {
 			final backend = known != null && known.exists(target) ? known.get(target)[0] : "clay";
 			for (action in ["run", "build"]) {
+				final command = ["ceramic", backend, action, target, "--setup", "--assets"].concat(debug);
+				// The debugger handles the web build and a desktop build for this machine.
+				final debuggable = action == "run" && (target == "web" || target == CommandProvider.hostPlatform);
 				result.push({
 					label: 'ceramic: $action $target',
-					command: ["ceramic", backend, action, target, "--setup", "--assets"].concat(debug),
+					command: command,
 					cwd: Path.directory(file),
-					target: target
+					target: target,
+					debug: debuggable ? {command: command} : null
 				});
 			}
 		}

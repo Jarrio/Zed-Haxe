@@ -3046,6 +3046,7 @@ class bridge_lsp_Session {
 	constructor(bridge,client,state) {
 		this.resolveAgain = false;
 		this.resolving = false;
+		this.debugWarned = false;
 		this.tasksWarned = false;
 		this.userDisplayServer = { };
 		this.onChanged = function() {
@@ -3378,6 +3379,16 @@ class bridge_lsp_Session {
 	}
 	writeTasks() {
 		let current = this.project;
+		let tmp;
+		if(current != null) {
+			let tmp1 = this.settings.debugConfigurations;
+			tmp = (tmp1 != null ? tmp1 : this.settings.tasks) != false;
+		} else {
+			tmp = false;
+		}
+		if(tmp) {
+			this.writeDebugConfigurations(current.tasks,current.target);
+		}
 		if(this.settings.tasks == false || current == null || current.tasks.length == 0) {
 			return;
 		}
@@ -3400,6 +3411,36 @@ class bridge_lsp_Session {
 		} catch( _g ) {
 			let e = haxe_Exception.caught(_g);
 			bridge_Log.info("could not write " + bridge_lsp_ZedTasks.path(this.workspaceRoot) + ": " + Std.string(e));
+		}
+	}
+	writeDebugConfigurations(tasks,target) {
+		let file = bridge_lsp_ZedDebug.path(this.workspaceRoot);
+		let _g = [];
+		let _g1 = 0;
+		while(_g1 < tasks.length) {
+			let task = tasks[_g1];
+			++_g1;
+			if(task.debug != null) {
+				_g.push(task);
+			}
+		}
+		let count = _g.length;
+		try {
+			switch(bridge_lsp_ZedDebug.write(this.workspaceRoot,bridge_lsp_ZedDebug.render(tasks,this.workspaceRoot,target),count)._hx_index) {
+			case 0:
+				bridge_Log.info("wrote " + count + " debug configurations to " + file);
+				break;
+			case 2:
+				if(!this.debugWarned) {
+					this.debugWarned = true;
+					bridge_Log.info("" + file + " is your own file, so the Haxe debug configurations were not written to it");
+				}
+				break;
+			default:
+			}
+		} catch( _g ) {
+			let e = haxe_Exception.caught(_g);
+			bridge_Log.info("could not write " + file + ": " + Std.string(e));
 		}
 	}
 	haxelibExecutable() {
@@ -3603,6 +3644,72 @@ class bridge_lsp_WorkspaceSymbols {
 	}
 }
 bridge_lsp_WorkspaceSymbols.__name__ = "bridge.lsp.WorkspaceSymbols";
+class bridge_lsp_ZedDebug {
+	static path(workspaceRoot) {
+		return haxe_io_Path.join([workspaceRoot,".zed","debug.json"]);
+	}
+	static render(tasks,workspaceRoot,currentTarget) {
+		let _g = [];
+		let _g1 = 0;
+		while(_g1 < tasks.length) {
+			let task = tasks[_g1];
+			++_g1;
+			if(task.debug != null) {
+				_g.push(task);
+			}
+		}
+		let ordered = _g;
+		haxe_ds_ArraySort.sort(ordered,function(a,b) {
+			return bridge_lsp_ZedTasks.rank(a,currentTarget) - bridge_lsp_ZedTasks.rank(b,currentTarget);
+		});
+		let _g2 = [];
+		let _g3 = 0;
+		while(_g3 < ordered.length) {
+			let task = ordered[_g3];
+			++_g3;
+			let entry = { label : bridge_lsp_ZedDebug.label(task.label), adapter : "Haxe", request : "launch"};
+			if(task.debug.hxml != null) {
+				entry["hxml"] = task.debug.hxml;
+			}
+			if(task.debug.program != null) {
+				entry["program"] = task.debug.program;
+			}
+			if(task.debug.command != null) {
+				entry["command"] = task.debug.command;
+			}
+			let cwd = bridge_lsp_ZedDebug.relativeToWorktree(task.cwd,workspaceRoot);
+			if(cwd != "") {
+				entry["cwd"] = cwd;
+			}
+			_g2.push(entry);
+		}
+		let entries = _g2;
+		return bridge_lsp_ZedDebug.header.join("\n") + "\n" + JSON.stringify(entries,null,"\t") + "\n";
+	}
+	static write(workspaceRoot,content,configurations) {
+		let file = bridge_lsp_ZedDebug.path(workspaceRoot);
+		if(configurations == 0 && !sys_FileSystem.exists(file)) {
+			return bridge_lsp_TasksWrite.Unchanged;
+		}
+		return bridge_lsp_ZedTasks.writeGenerated(file,content,bridge_lsp_ZedDebug.header[0]);
+	}
+	static label(taskLabel) {
+		return "Debug " + (taskLabel.startsWith("haxe: ") ? HxOverrides.substr(taskLabel,6,null) : StringTools.replace(taskLabel,": "," "));
+	}
+	static relativeToWorktree(dir,workspaceRoot) {
+		let root = haxe_io_Path.removeTrailingSlashes(haxe_io_Path.normalize(workspaceRoot));
+		let normalized = haxe_io_Path.removeTrailingSlashes(haxe_io_Path.normalize(dir));
+		if(normalized == root) {
+			return "";
+		}
+		if(normalized.startsWith(root + "/")) {
+			return HxOverrides.substr(normalized,root.length + 1,null);
+		} else {
+			return dir;
+		}
+	}
+}
+bridge_lsp_ZedDebug.__name__ = "bridge.lsp.ZedDebug";
 var bridge_lsp_TasksWrite = $hxEnums["bridge.lsp.TasksWrite"] = { __ename__:true,__constructs__:null
 	,Written: {_hx_name:"Written",_hx_index:0,__enum__:"bridge.lsp.TasksWrite",toString:$estr}
 	,Unchanged: {_hx_name:"Unchanged",_hx_index:1,__enum__:"bridge.lsp.TasksWrite",toString:$estr}
@@ -3612,9 +3719,6 @@ bridge_lsp_TasksWrite.__constructs__ = [bridge_lsp_TasksWrite.Written,bridge_lsp
 class bridge_lsp_ZedTasks {
 	static path(workspaceRoot) {
 		return haxe_io_Path.join([workspaceRoot,".zed","tasks.json"]);
-	}
-	static isGenerated(text) {
-		return StringTools.ltrim(text).startsWith(bridge_lsp_ZedTasks.header[0]);
 	}
 	static render(tasks,workspaceRoot,toolchain,currentTarget) {
 		let ordered = tasks.slice();
@@ -3649,10 +3753,12 @@ class bridge_lsp_ZedTasks {
 		return bridge_lsp_ZedTasks.header.join("\n") + "\n" + JSON.stringify(entries,null,"\t") + "\n";
 	}
 	static write(workspaceRoot,content) {
-		let file = bridge_lsp_ZedTasks.path(workspaceRoot);
+		return bridge_lsp_ZedTasks.writeGenerated(bridge_lsp_ZedTasks.path(workspaceRoot),content,bridge_lsp_ZedTasks.header[0]);
+	}
+	static writeGenerated(file,content,firstLine) {
 		if(sys_FileSystem.exists(file)) {
 			let existing = js_node_Fs.readFileSync(file,{ encoding : "utf8"});
-			if(!bridge_lsp_ZedTasks.isGenerated(existing)) {
+			if(!StringTools.ltrim(existing).startsWith(firstLine)) {
 				return bridge_lsp_TasksWrite.NotOurs;
 			}
 			if(existing == content) {
@@ -4492,9 +4598,13 @@ class bridge_project_CeramicProvider {
 			++_g;
 			let backend = known != null && Object.prototype.hasOwnProperty.call(known.h,target) ? known.h[target][0] : "clay";
 			let action = "run";
-			result.push({ label : "ceramic: " + action + " " + target, command : ["ceramic",backend,action,target,"--setup","--assets"].concat(debug), cwd : haxe_io_Path.directory(file), target : target});
+			let command = ["ceramic",backend,action,target,"--setup","--assets"].concat(debug);
+			let debuggable = action == "run" && (target == "web" || target == bridge_project_CommandProvider.hostPlatform);
+			result.push({ label : "ceramic: " + action + " " + target, command : command, cwd : haxe_io_Path.directory(file), target : target, debug : debuggable ? { command : command} : null});
 			let action1 = "build";
-			result.push({ label : "ceramic: " + action1 + " " + target, command : ["ceramic",backend,action1,target,"--setup","--assets"].concat(debug), cwd : haxe_io_Path.directory(file), target : target});
+			let command1 = ["ceramic",backend,action1,target,"--setup","--assets"].concat(debug);
+			let debuggable1 = action1 == "run" && (target == "web" || target == bridge_project_CommandProvider.hostPlatform);
+			result.push({ label : "ceramic: " + action1 + " " + target, command : command1, cwd : haxe_io_Path.directory(file), target : target, debug : debuggable1 ? { command : command1} : null});
 		}
 		return result;
 	}
@@ -4614,10 +4724,24 @@ class bridge_project_CommandProvider {
 				let target = forTargets[_g2];
 				++_g2;
 				let values = this.placeholders(ctx,file,target);
+				let command = bridge_util_Vars.expandArgs(template.command,values,lists);
+				let debuggable;
+				if(target != null && template.debugTargets != null) {
+					let _this = template.debugTargets;
+					let result = new Array(_this.length);
+					let _g = 0;
+					let _g1 = _this.length;
+					while(_g < _g1) {
+						let i = _g++;
+						result[i] = bridge_util_Vars.expand(_this[i],values);
+					}
+					debuggable = result.includes(target);
+				} else {
+					debuggable = false;
+				}
 				let tmp = bridge_util_Vars.expand(template.label,values);
-				let tmp1 = bridge_util_Vars.expandArgs(template.command,values,lists);
-				let tmp2 = template.cwd;
-				result.push({ label : tmp, command : tmp1, cwd : bridge_util_Vars.expand(tmp2 != null ? tmp2 : "${projectDir}",values), target : target});
+				let tmp1 = template.cwd;
+				result.push({ label : tmp, command : command, cwd : bridge_util_Vars.expand(tmp1 != null ? tmp1 : "${projectDir}",values), target : target, debug : debuggable ? { command : command} : null});
 			}
 		}
 		return result;
@@ -4648,7 +4772,7 @@ class bridge_project_CommandProvider {
 		let tmp1 = haxe_io_Path.withoutDirectory(file);
 		let tmp2 = target;
 		let tmp3 = ctx.settings.buildType;
-		return { workspaceRoot : ctx1, projectDir : tmp, projectFile : tmp1, target : tmp2 != null ? tmp2 : "", buildType : tmp3 != null ? tmp3 : ""};
+		return { workspaceRoot : ctx1, projectDir : tmp, projectFile : tmp1, target : tmp2 != null ? tmp2 : "", buildType : tmp3 != null ? tmp3 : "", hostPlatform : bridge_project_CommandProvider.hostPlatform};
 	}
 	run(spec,values,ctx) {
 		let tmp = this.definition.buildTypes;
@@ -4831,12 +4955,13 @@ class bridge_project_HxmlProvider {
 	detect(ctx) {
 		let _g = [];
 		let _g1 = 0;
-		let _g2 = bridge_util_Files.findByExtension(ctx.projectRoot,".hxml",3);
+		let _g2 = bridge_project_HxmlProvider.hxmlFiles(ctx);
 		while(_g1 < _g2.length) {
 			let file = _g2[_g1];
 			++_g1;
-			if(haxe_io_Path.withoutDirectory(file.path) != "extraParams.hxml") {
-				_g.push({ path : file.path, score : bridge_project_HxmlProvider.score(file.path,file.depth)});
+			let info = bridge_project_HxmlProvider.read(file.path,[]);
+			if(!info.runs) {
+				_g.push({ path : file.path, score : bridge_project_HxmlProvider.score(file.path,file.depth,info)});
 			}
 		}
 		let found = _g;
@@ -4875,24 +5000,108 @@ class bridge_project_HxmlProvider {
 	tasks(ctx,file,targets) {
 		let _g = [];
 		let _g1 = 0;
-		while(_g1 < targets.length) {
-			let target = targets[_g1];
+		let _g2 = bridge_project_HxmlProvider.hxmlFiles(ctx);
+		while(_g1 < _g2.length) {
+			let file = _g2[_g1];
 			++_g1;
-			let path = haxe_io_Path.join([ctx.projectRoot,target]);
-			if(bridge_project_HxmlProvider.read(path,[]).hasOutput) {
-				_g.push({ label : "haxe: " + target, command : ["haxe",haxe_io_Path.withoutDirectory(path)], cwd : haxe_io_Path.directory(path), target : target});
+			if(bridge_project_HxmlProvider.read(file.path,[]).runs) {
+				_g.push(bridge_project_HxmlProvider.relative(ctx.projectRoot,file.path));
 			}
 		}
-		return _g;
+		let runs = _g;
+		let _g3 = [];
+		let _g4 = 0;
+		let _g5 = targets.concat(runs);
+		while(_g4 < _g5.length) {
+			let target = _g5[_g4];
+			++_g4;
+			let path = haxe_io_Path.join([ctx.projectRoot,target]);
+			let info = bridge_project_HxmlProvider.read(path,[]);
+			if(info.hasOutput) {
+				_g3.push({ label : "haxe: " + target, command : ["haxe",haxe_io_Path.withoutDirectory(path)], cwd : haxe_io_Path.directory(path), target : target, debug : bridge_project_HxmlProvider.debugFor(ctx,path,info)});
+			}
+		}
+		return _g3;
 	}
 	buildTypes() {
 		return [];
 	}
-	static score(path,depth) {
+	static debugFor(ctx,path,info) {
+		let hxml = haxe_io_Path.withoutDirectory(path);
+		let _g = info.target;
+		if(_g == null) {
+			return null;
+		} else {
+			switch(_g) {
+			case "cppia":
+				let program = bridge_project_HxmlProvider.cppiaHost(ctx,path,info);
+				if(program == null) {
+					return null;
+				} else {
+					return { hxml : hxml, program : program};
+				}
+				break;
+			case "cpp":case "hl":case "interp":case "js":
+				return { hxml : hxml};
+			default:
+				return null;
+			}
+		}
+	}
+	static cppiaHost(ctx,scriptHxml,script) {
+		let dir = haxe_io_Path.directory(scriptHxml);
+		if(script.output == null) {
+			return null;
+		}
+		let scriptFile = bridge_project_HxmlProvider.absolute(dir,script.output);
+		let _g = 0;
+		let _g1 = bridge_project_HxmlProvider.hxmlFiles(ctx);
+		while(_g < _g1.length) {
+			let file = _g1[_g];
+			++_g;
+			let host = bridge_project_HxmlProvider.read(file.path,[]);
+			if(host.target != "cpp" || host.output == null || !Object.prototype.hasOwnProperty.call(host.defines.h,"scriptable")) {
+				continue;
+			}
+			let hostDir = bridge_project_HxmlProvider.absolute(haxe_io_Path.directory(file.path),host.output);
+			let name;
+			let tmp = host.defines.h["HAXE_OUTPUT_FILE"];
+			if(tmp != null) {
+				name = tmp;
+			} else {
+				let tmp = host.main;
+				name = tmp != null ? tmp.split(".").pop() : null;
+			}
+			let tmp1;
+			if(name != null) {
+				let start = haxe_io_Path.addTrailingSlash(hostDir);
+				tmp1 = !scriptFile.startsWith(start);
+			} else {
+				tmp1 = true;
+			}
+			if(tmp1) {
+				continue;
+			}
+			let suffix;
+			if(host.debug) {
+				let tmp = host.defines.h["DEBUGSUFFIX"];
+				suffix = tmp != null ? tmp : "-debug";
+			} else {
+				suffix = "";
+			}
+			return bridge_project_HxmlProvider.relative(dir,haxe_io_Path.join([hostDir,name + suffix + (process.platform == "win32" ? ".exe" : "")]));
+		}
+		return null;
+	}
+	static absolute(base,path) {
+		return haxe_io_Path.normalize(haxe_io_Path.isAbsolute(path) ? path : haxe_io_Path.join([base,path]));
+	}
+	static score(path,depth,info) {
 		let name = haxe_io_Path.withoutDirectory(path).toLowerCase();
-		let info = bridge_project_HxmlProvider.read(path,[]);
 		let score = -20 * depth + (info.hasOutput ? 40 : -40) + 15 * info.classPaths.length;
-		if(name.indexOf("lsp") >= 0 || name.indexOf("devenv") >= 0 || name.indexOf("display") >= 0) {
+		if(Lambda.exists(["lsp","devenv","display","completion"],function(word) {
+			return name.indexOf(word) >= 0;
+		})) {
 			score += 100;
 		}
 		if(name.indexOf("main") >= 0) {
@@ -4912,8 +5121,21 @@ class bridge_project_HxmlProvider {
 		}
 		return score;
 	}
+	static hxmlFiles(ctx) {
+		let _g = [];
+		let _g1 = 0;
+		let _g2 = bridge_util_Files.findByExtension(ctx.projectRoot,".hxml",3);
+		while(_g1 < _g2.length) {
+			let file = _g2[_g1];
+			++_g1;
+			if(haxe_io_Path.withoutDirectory(file.path) != "extraParams.hxml") {
+				_g.push(file);
+			}
+		}
+		return _g;
+	}
 	static read(path,seen) {
-		let info = { hasOutput : false, classPaths : []};
+		let info = { hasOutput : false, runs : false, classPaths : [], debug : false, defines : new haxe_ds_StringMap()};
 		if(seen.includes(path) || !sys_FileSystem.exists(path)) {
 			return info;
 		}
@@ -4929,8 +5151,23 @@ class bridge_project_HxmlProvider {
 		while(_g < _g1) {
 			let i = _g++;
 			let arg = args[i];
+			let next = i + 1 < args.length ? args[i + 1] : null;
 			if(bridge_project_HxmlProvider.outputFlags.includes(arg)) {
 				info.hasOutput = true;
+				info.runs = info.runs || arg == "--run";
+				info.target = arg == "-x" ? "interp" : StringTools.replace(arg,"-","");
+				info.output = arg == "--interp" || arg == "-x" || arg == "--run" ? null : next;
+				if(arg == "-x" || arg == "--run") {
+					info.main = next;
+				}
+			} else if((arg == "-main" || arg == "--main" || arg == "-m") && next != null) {
+				info.main = next;
+			} else if(arg == "--debug" || arg == "-debug") {
+				info.debug = true;
+			} else if((arg == "-D" || arg == "--define") && next != null) {
+				let equals = next.indexOf("=");
+				let name = StringTools.replace(equals < 0 ? next : HxOverrides.substr(next,0,equals),"-","_");
+				info.defines.h[name] = equals < 0 ? "1" : HxOverrides.substr(next,equals + 1,null);
 			} else if((arg == "-cp" || arg == "-p" || arg == "--class-path") && i + 1 < args.length) {
 				let classPath = haxe_io_Path.normalize(args[i + 1]);
 				if(!info.classPaths.includes(classPath)) {
@@ -4939,6 +5176,28 @@ class bridge_project_HxmlProvider {
 			} else if(arg.endsWith(".hxml")) {
 				let included = bridge_project_HxmlProvider.read(haxe_io_Path.join([haxe_io_Path.directory(path),arg]),seen);
 				info.hasOutput = info.hasOutput || included.hasOutput;
+				info.runs = info.runs || included.runs;
+				if(included.target != null) {
+					info.target = included.target;
+					info.output = included.output;
+				}
+				if(included.main != null) {
+					info.main = included.main;
+				}
+				info.debug = info.debug || included.debug;
+				let h = included.defines.h;
+				let _g_h = h;
+				let _g_keys = Object.keys(h);
+				let _g_length = _g_keys.length;
+				let _g_current = 0;
+				while(_g_current < _g_length) {
+					let key = _g_keys[_g_current++];
+					let _g_key = key;
+					let _g_value = _g_h[key];
+					let name = _g_key;
+					let value = _g_value;
+					info.defines.h[name] = value;
+				}
 				let _g = 0;
 				let _g1 = included.classPaths;
 				while(_g < _g1.length) {
@@ -7437,7 +7696,7 @@ if( String.fromCodePoint == null ) String.fromCodePoint = function(c) { return c
 	Date.prototype.__class__ = Date;
 	Date.__name__ = "Date";
 }
-haxe_Resource.content = [{ name : "docs/openfl.meta.json", data : "WwoJeyJtZXRhZGF0YSI6ICI6Yml0bWFwIiwgImRvYyI6ICJFbWJlZHMgYW4gaW1hZ2UgaW50byBhIGNsYXNzIGV4dGVuZGluZyBvcGVuZmwuZGlzcGxheS5CaXRtYXBEYXRhLiBUaGUgcGF0aCBpcyByZWxhdGl2ZSB0byB0aGUgd29ya2luZyBkaXJlY3Rvcnkgb3IgYSBjbGFzcyBwYXRoLiIsICJwYXJhbXMiOiBbInBhdGgiXSwgInRhcmdldHMiOiBbIlRDbGFzcyJdfSwKCXsibWV0YWRhdGEiOiAiOnNvdW5kIiwgImRvYyI6ICJFbWJlZHMgYSBzb3VuZCBpbnRvIGEgY2xhc3MgZXh0ZW5kaW5nIG9wZW5mbC5tZWRpYS5Tb3VuZC4gVGhlIHBhdGggaXMgcmVsYXRpdmUgdG8gdGhlIHdvcmtpbmcgZGlyZWN0b3J5IG9yIGEgY2xhc3MgcGF0aC4iLCAicGFyYW1zIjogWyJwYXRoIl0sICJ0YXJnZXRzIjogWyJUQ2xhc3MiXX0KXQo"},{ name : "docs/lime.meta.json", data : "WwoJeyJtZXRhZGF0YSI6ICI6ZmlsZSIsICJkb2MiOiAiRW1iZWRzIGEgZmlsZSdzIGJ5dGVzIGludG8gYSBjbGFzcyBleHRlbmRpbmcgaGF4ZS5pby5CeXRlcyBvciBvcGVuZmwudXRpbHMuQnl0ZUFycmF5LiBUaGUgcGF0aCBpcyByZWxhdGl2ZSB0byB0aGUgd29ya2luZyBkaXJlY3Rvcnkgb3IgYSBjbGFzcyBwYXRoLiIsICJwYXJhbXMiOiBbInBhdGgiXSwgInRhcmdldHMiOiBbIlRDbGFzcyJdfSwKCXsibWV0YWRhdGEiOiAiOmltYWdlIiwgImRvYyI6ICJFbWJlZHMgYW4gaW1hZ2UgaW50byBhIGNsYXNzIGV4dGVuZGluZyBsaW1lLmdyYXBoaWNzLkltYWdlLiBUaGUgcGF0aCBpcyByZWxhdGl2ZSB0byB0aGUgd29ya2luZyBkaXJlY3Rvcnkgb3IgYSBjbGFzcyBwYXRoLiIsICJwYXJhbXMiOiBbInBhdGgiXSwgInRhcmdldHMiOiBbIlRDbGFzcyJdfSwKCXsibWV0YWRhdGEiOiAiOmZvbnQiLCAiZG9jIjogIkVtYmVkcyBhIGZvbnQgaW50byBhIGNsYXNzIGV4dGVuZGluZyBsaW1lLnRleHQuRm9udCAob3Igb3BlbmZsLnRleHQuRm9udCkuIFRoZSBwYXRoIGlzIHJlbGF0aXZlIHRvIHRoZSB3b3JraW5nIGRpcmVjdG9yeSBvciBhIGNsYXNzIHBhdGguIiwgInBhcmFtcyI6IFsicGF0aCJdLCAidGFyZ2V0cyI6IFsiVENsYXNzIl19Cl0K"},{ name : "providers/lime.json", data : "ewoJIm5hbWUiOiAibGltZSIsCgkicHJpb3JpdHkiOiAxMDAsCgkiZGV0ZWN0IjogWwoJCSJwcm9qZWN0LnhtbCIsCgkJIlByb2plY3QueG1sIiwKCQkicHJvamVjdC5oeHAiLAoJCSJwcm9qZWN0LmxpbWUiCgldLAoJInRhcmdldHMiOiBbCgkJImh0bWw1IiwKCQkiaGwiLAoJCSJuZWtvIiwKCQkibGludXgiLAoJCSJ3aW5kb3dzIiwKCQkibWFjIiwKCQkiYW5kcm9pZCIsCgkJImlvcyIsCgkJImFpciIsCgkJImZsYXNoIiwKCQkiZWxlY3Ryb24iCgldLAoJImJ1aWxkVHlwZXMiOiB7CgkJImRlYnVnIjogWwoJCQkiLWRlYnVnIgoJCV0sCgkJImZpbmFsIjogWwoJCQkiLWZpbmFsIgoJCV0KCX0sCgkiYXJncyI6IHsKCQkiY29tbWFuZCI6IFsKCQkJWwoJCQkJImxpbWUiLAoJCQkJImRpc3BsYXkiLAoJCQkJIiR7cHJvamVjdEZpbGV9IiwKCQkJCSIke3RhcmdldH0iLAoJCQkJIiR7YnVpbGRUeXBlQXJnc30iLAoJCQkJIi1ub2NvbG9yIiwKCQkJCSItRGRpc2FibGUtdmVyc2lvbi1jaGVjayIKCQkJXSwKCQkJWwoJCQkJImhheGVsaWIiLAoJCQkJInJ1biIsCgkJCQkibGltZSIsCgkJCQkiZGlzcGxheSIsCgkJCQkiJHtwcm9qZWN0RmlsZX0iLAoJCQkJIiR7dGFyZ2V0fSIsCgkJCQkiJHtidWlsZFR5cGVBcmdzfSIsCgkJCQkiLW5vY29sb3IiLAoJCQkJIi1EZGlzYWJsZS12ZXJzaW9uLWNoZWNrIgoJCQldCgkJXSwKCQkiY3dkIjogIiR7cHJvamVjdERpcn0iLAoJCSJvdXRwdXQiOiAiaHhtbCIKCX0sCgkiZG9jcyI6IFsKCQl7CgkJCSJsaWIiOiAibGltZSIsCgkJCSJtZXRhZGF0YSI6ICJidWlsdGluOmxpbWUubWV0YS5qc29uIgoJCX0sCgkJewoJCQkibGliIjogIm9wZW5mbCIsCgkJCSJtZXRhZGF0YSI6ICJidWlsdGluOm9wZW5mbC5tZXRhLmpzb24iCgkJfSwKCQl7CgkJCSJsaWIiOiAiZmxpeGVsIiwKCQkJImRlZmluZXMiOiAiYnVpbHRpbjpmbGl4ZWwuZGVmaW5lcy5qc29uIgoJCX0KCV0sCgkidGFza3MiOiBbCgkJewoJCQkibGFiZWwiOiAibGltZTogdGVzdCAke3RhcmdldH0iLAoJCQkiY29tbWFuZCI6IFsKCQkJCSJoYXhlbGliIiwKCQkJCSJydW4iLAoJCQkJImxpbWUiLAoJCQkJInRlc3QiLAoJCQkJIiR7cHJvamVjdEZpbGV9IiwKCQkJCSIke3RhcmdldH0iLAoJCQkJIiR7YnVpbGRUeXBlQXJnc30iCgkJCV0KCQl9LAoJCXsKCQkJImxhYmVsIjogImxpbWU6IGJ1aWxkICR7dGFyZ2V0fSIsCgkJCSJjb21tYW5kIjogWwoJCQkJImhheGVsaWIiLAoJCQkJInJ1biIsCgkJCQkibGltZSIsCgkJCQkiYnVpbGQiLAoJCQkJIiR7cHJvamVjdEZpbGV9IiwKCQkJCSIke3RhcmdldH0iLAoJCQkJIiR7YnVpbGRUeXBlQXJnc30iCgkJCV0KCQl9CgldCn0K"},{ name : "docs/flixel.defines.json", data : "WwoJeyJkZWZpbmUiOiAiRkxYX05PX01PVVNFIiwgImRvYyI6ICJSZW1vdmVzIG1vdXNlIHN1cHBvcnQgKEZseEcubW91c2UpLiBXaXRob3V0IGl0LCBmbGl4ZWwgZGVmaW5lcyBGTFhfTU9VU0UuIn0sCgl7ImRlZmluZSI6ICJGTFhfTk9fTU9VU0VfQURWQU5DRUQiLCAiZG9jIjogIlJlbW92ZXMgbWlkZGxlIGFuZCByaWdodCBtb3VzZSBidXR0b24gZXZlbnRzLiBXaXRob3V0IGl0IChhbmQgb3V0c2lkZSBGbGFzaCA8IDExLjIpLCBmbGl4ZWwgZGVmaW5lcyBGTFhfTU9VU0VfQURWQU5DRUQuIn0sCgl7ImRlZmluZSI6ICJGTFhfTk9fTkFUSVZFX0NVUlNPUiIsICJkb2MiOiAiRGlzYWJsZXMgbmF0aXZlIG1vdXNlIGN1cnNvcnMgb24gRmxhc2ggMTAuMisuIFdpdGhvdXQgaXQsIGZsaXhlbCBkZWZpbmVzIEZMWF9OQVRJVkVfQ1VSU09SIHRoZXJlLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX05PX1RPVUNIIiwgImRvYyI6ICJSZW1vdmVzIHRvdWNoIHN1cHBvcnQgKEZseEcudG91Y2hlcykuIFdpdGhvdXQgaXQsIGZsaXhlbCBkZWZpbmVzIEZMWF9UT1VDSC4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19LRVlCT0FSRCIsICJkb2MiOiAiUmVtb3ZlcyBrZXlib2FyZCBzdXBwb3J0IChGbHhHLmtleXMpLiBXaXRob3V0IGl0LCBmbGl4ZWwgZGVmaW5lcyBGTFhfS0VZQk9BUkQuIn0sCgl7ImRlZmluZSI6ICJGTFhfTk9fR0FNRVBBRCIsICJkb2MiOiAiUmVtb3ZlcyBnYW1lcGFkIHN1cHBvcnQgKEZseEcuZ2FtZXBhZHMpLiBXaXRob3V0IGl0LCBmbGl4ZWwgZGVmaW5lcyBGTFhfR0FNRVBBRC4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19TT1VORF9TWVNURU0iLCAiZG9jIjogIlJlbW92ZXMgZmxpeGVsJ3Mgc291bmQgc3lzdGVtIChGbHhHLnNvdW5kKS4gQWxzbyBkaXNhYmxlcyB0aGUgc291bmQgdHJheSBhbmQgcGl0Y2ggY29udHJvbC4gV2l0aG91dCBpdCwgZmxpeGVsIGRlZmluZXMgRkxYX1NPVU5EX1NZU1RFTS4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19TT1VORF9UUkFZIiwgImRvYyI6ICJSZW1vdmVzIHRoZSB2b2x1bWUgc291bmQgdHJheS4gV2l0aG91dCBpdCAoYW5kIHdpdGggdGhlIHNvdW5kIHN5c3RlbSksIGZsaXhlbCBkZWZpbmVzIEZMWF9TT1VORF9UUkFZLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX05PX0ZPQ1VTX0xPU1RfU0NSRUVOIiwgImRvYyI6ICJSZW1vdmVzIHRoZSBzY3JlZW4gc2hvd24gd2hlbiB0aGUgZ2FtZSBsb3NlcyBmb2N1cy4gV2l0aG91dCBpdCwgZmxpeGVsIGRlZmluZXMgRkxYX0ZPQ1VTX0xPU1RfU0NSRUVOLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX05PX0RFQlVHIiwgImRvYyI6ICJSZW1vdmVzIHRoZSBkZWJ1Z2dlciBhbmQgZGVidWcgZHJhd2luZy4gV2l0aG91dCBpdCwgZmxpeGVsIGRlZmluZXMgRkxYX0RFQlVHICh3aGljaCBhbHNvIGRlZmluZXMgRkxYX1RSQUNLX0dSQVBISUNTKS4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19IRUFMVEgiLCAiZG9jIjogIlJlbW92ZXMgRmx4T2JqZWN0LmhlYWx0aC4ifSwKCXsiZGVmaW5lIjogIkZMWF9IRUFMVEgiLCAiZG9jIjogIkVuYWJsZXMgRmx4T2JqZWN0LmhlYWx0aC4gRmxpeGVsIGRlZmluZXMgaXQgYXV0b21hdGljYWxseSB3aGVuIG5laXRoZXIgRkxYX0hFQUxUSCBub3IgRkxYX05PX0hFQUxUSCBpcyBzZXQuIn0sCgl7ImRlZmluZSI6ICJGTFhfUkVDT1JEIiwgImRvYyI6ICJFbmFibGVzIGZsaXhlbCdzIHJlcGxheSByZWNvcmRpbmcgc3VwcG9ydC4ifSwKCXsiZGVmaW5lIjogIkZMWF9SRU5ERVJfVFJJQU5HTEUiLCAiZG9jIjogIkFkZGl0aW9uYWwgcmVuZGVyaW5nIGRlZmluZS4ifSwKCXsiZGVmaW5lIjogIkZMWF80X0xFR0FDWV9DT0xMSVNJT04iLCAiZG9jIjogIlVzZXMgZmxpeGVsIDQuMCBsZWdhY3kgY29sbGlzaW9uLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX05PX1BPSU5UX1BPT0wiLCAiZG9jIjogIlNpbXBsaWZpZXMgRmx4UG9pbnQgYnkgbm90IHBvb2xpbmcgaW5zdGFuY2VzLCB3aGljaCBjYW4gaW5jcmVhc2UgR0MgZnJlcXVlbmN5LiBXaXRob3V0IGl0LCBmbGl4ZWwgZGVmaW5lcyBGTFhfUE9JTlRfUE9PTC4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19QSVRDSCIsICJkb2MiOiAiRGlzYWJsZXMgc291bmQgcGl0Y2ggY29udHJvbC4gRGVmaW5lZCBhdXRvbWF0aWNhbGx5IG9uIEZsYXNoIGFuZCB3aXRoIEZMWF9OT19TT1VORF9TWVNURU07IG90aGVyd2lzZSBmbGl4ZWwgZGVmaW5lcyBGTFhfUElUQ0guIn0sCgl7ImRlZmluZSI6ICJGTFhfTk9fU0FWRSIsICJkb2MiOiAiUmVtb3ZlcyBGbHhHLnNhdmUuIFdpdGhvdXQgaXQsIGZsaXhlbCBkZWZpbmVzIEZMWF9TQVZFLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX1RSQUNLX1BPT0xTIiwgImRvYyI6ICJBZGRzIHRyYWNrZXJzIHRvIEZseFBvb2wgaW5zdGFuY2VzLiBPbmx5IGFsbG93ZWQgaW4gZGVidWcgYnVpbGRzLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX1RSQUNLX0dSQVBISUNTIiwgImRvYyI6ICJBZGRzIGBjcmVhdGlvbkluZm9gIHRvIEZseEdyYXBoaWMgaW5zdGFuY2VzLiBEZWZpbmVkIGF1dG9tYXRpY2FsbHkgd2l0aCBGTFhfREVCVUcuIn0sCgl7ImRlZmluZSI6ICJGTFhfQ1VTVE9NX0FTU0VUU19ESVJFQ1RPUlkiLCAiZG9jIjogIkxvYWRzIGFzc2V0cyBmcm9tIHRoZSBnaXZlbiByZWxhdGl2ZSBvciBhYnNvbHV0ZSBkaXJlY3RvcnkgaW5zdGVhZCBvZiB0aGUgYnVpbGQncyBhc3NldHMuIFVubGlrZSBvdGhlciBmbGFncywgaXQgdGFrZXMgYSBwYXRoLiBTeXMgdGFyZ2V0cyBvbmx5LiBXaGVuIGFzc2V0cyBjb21lIGVudGlyZWx5IGZyb20gb3V0c2lkZSB0aGUgYnVpbGQgZGlyZWN0b3J5LCBjb25zaWRlciBkaXNhYmxpbmcgPGFzc2V0cz4gdGFncyBpbiBQcm9qZWN0LnhtbCB0byBzYXZlIG1lbW9yeS4iLCAicGFyYW1zIjogWyJwYXRoIl19LAoJeyJkZWZpbmUiOiAiRkxYX0RFRkFVTFRfU09VTkRfRVhUIiwgImRvYyI6ICJBbGxvd3Mgc291bmQgcGF0aHMgd2l0aG91dCBhbiBleHRlbnNpb246IHRoZSB0YXJnZXQncyBkZWZhdWx0IHR5cGUgaXMgdXNlZCAob2dnIGV2ZXJ5d2hlcmUgZXhjZXB0IEZsYXNoLCB3aGljaCB1c2VzIG1wMykuIFNldCBpdCB0byBhIHN0cmluZyB0byB1c2UgdGhhdCBleHRlbnNpb24gaW5zdGVhZC4iLCAicGFyYW1zIjogWyJleHRlbnNpb24iXX0sCgl7ImRlZmluZSI6ICJGTFhfREVCVUdHRVJfU0NBTEUiLCAiZG9jIjogIk1ha2VzIHRoZSBkZWJ1Z2dlciB3aW5kb3dzIGJpZ2dlci4iLCAicGFyYW1zIjogWyJzY2FsZSJdfSwKCXsiZGVmaW5lIjogIkZMWF9VTklUX1RFU1QiLCAiZG9jIjogIkRlZmluZWQgaW4gSGF4ZUZsaXhlbCBDSSB0ZXN0czsgZG8gbm90IHVzZS4ifSwKCXsiZGVmaW5lIjogIkZMWF9DT1ZFUkFHRV9URVNUIiwgImRvYyI6ICJEZWZpbmVkIGluIEhheGVGbGl4ZWwgQ0kgdGVzdHM7IGRvIG5vdCB1c2UuIn0sCgl7ImRlZmluZSI6ICJGTFhfU1dGX1ZFUlNJT05fVEVTVCIsICJkb2MiOiAiRGVmaW5lZCBpbiBIYXhlRmxpeGVsIENJIHRlc3RzOyBkbyBub3QgdXNlLiJ9Cl0K"}];
+haxe_Resource.content = [{ name : "docs/openfl.meta.json", data : "WwoJeyJtZXRhZGF0YSI6ICI6Yml0bWFwIiwgImRvYyI6ICJFbWJlZHMgYW4gaW1hZ2UgaW50byBhIGNsYXNzIGV4dGVuZGluZyBvcGVuZmwuZGlzcGxheS5CaXRtYXBEYXRhLiBUaGUgcGF0aCBpcyByZWxhdGl2ZSB0byB0aGUgd29ya2luZyBkaXJlY3Rvcnkgb3IgYSBjbGFzcyBwYXRoLiIsICJwYXJhbXMiOiBbInBhdGgiXSwgInRhcmdldHMiOiBbIlRDbGFzcyJdfSwKCXsibWV0YWRhdGEiOiAiOnNvdW5kIiwgImRvYyI6ICJFbWJlZHMgYSBzb3VuZCBpbnRvIGEgY2xhc3MgZXh0ZW5kaW5nIG9wZW5mbC5tZWRpYS5Tb3VuZC4gVGhlIHBhdGggaXMgcmVsYXRpdmUgdG8gdGhlIHdvcmtpbmcgZGlyZWN0b3J5IG9yIGEgY2xhc3MgcGF0aC4iLCAicGFyYW1zIjogWyJwYXRoIl0sICJ0YXJnZXRzIjogWyJUQ2xhc3MiXX0KXQo"},{ name : "docs/lime.meta.json", data : "WwoJeyJtZXRhZGF0YSI6ICI6ZmlsZSIsICJkb2MiOiAiRW1iZWRzIGEgZmlsZSdzIGJ5dGVzIGludG8gYSBjbGFzcyBleHRlbmRpbmcgaGF4ZS5pby5CeXRlcyBvciBvcGVuZmwudXRpbHMuQnl0ZUFycmF5LiBUaGUgcGF0aCBpcyByZWxhdGl2ZSB0byB0aGUgd29ya2luZyBkaXJlY3Rvcnkgb3IgYSBjbGFzcyBwYXRoLiIsICJwYXJhbXMiOiBbInBhdGgiXSwgInRhcmdldHMiOiBbIlRDbGFzcyJdfSwKCXsibWV0YWRhdGEiOiAiOmltYWdlIiwgImRvYyI6ICJFbWJlZHMgYW4gaW1hZ2UgaW50byBhIGNsYXNzIGV4dGVuZGluZyBsaW1lLmdyYXBoaWNzLkltYWdlLiBUaGUgcGF0aCBpcyByZWxhdGl2ZSB0byB0aGUgd29ya2luZyBkaXJlY3Rvcnkgb3IgYSBjbGFzcyBwYXRoLiIsICJwYXJhbXMiOiBbInBhdGgiXSwgInRhcmdldHMiOiBbIlRDbGFzcyJdfSwKCXsibWV0YWRhdGEiOiAiOmZvbnQiLCAiZG9jIjogIkVtYmVkcyBhIGZvbnQgaW50byBhIGNsYXNzIGV4dGVuZGluZyBsaW1lLnRleHQuRm9udCAob3Igb3BlbmZsLnRleHQuRm9udCkuIFRoZSBwYXRoIGlzIHJlbGF0aXZlIHRvIHRoZSB3b3JraW5nIGRpcmVjdG9yeSBvciBhIGNsYXNzIHBhdGguIiwgInBhcmFtcyI6IFsicGF0aCJdLCAidGFyZ2V0cyI6IFsiVENsYXNzIl19Cl0K"},{ name : "providers/lime.json", data : "ewoJIm5hbWUiOiAibGltZSIsCgkicHJpb3JpdHkiOiAxMDAsCgkiZGV0ZWN0IjogWwoJCSJwcm9qZWN0LnhtbCIsCgkJIlByb2plY3QueG1sIiwKCQkicHJvamVjdC5oeHAiLAoJCSJwcm9qZWN0LmxpbWUiCgldLAoJInRhcmdldHMiOiBbCgkJImh0bWw1IiwKCQkiaGwiLAoJCSJuZWtvIiwKCQkibGludXgiLAoJCSJ3aW5kb3dzIiwKCQkibWFjIiwKCQkiYW5kcm9pZCIsCgkJImlvcyIsCgkJImFpciIsCgkJImZsYXNoIiwKCQkiZWxlY3Ryb24iCgldLAoJImJ1aWxkVHlwZXMiOiB7CgkJImRlYnVnIjogWwoJCQkiLWRlYnVnIgoJCV0sCgkJImZpbmFsIjogWwoJCQkiLWZpbmFsIgoJCV0KCX0sCgkiYXJncyI6IHsKCQkiY29tbWFuZCI6IFsKCQkJWwoJCQkJImxpbWUiLAoJCQkJImRpc3BsYXkiLAoJCQkJIiR7cHJvamVjdEZpbGV9IiwKCQkJCSIke3RhcmdldH0iLAoJCQkJIiR7YnVpbGRUeXBlQXJnc30iLAoJCQkJIi1ub2NvbG9yIiwKCQkJCSItRGRpc2FibGUtdmVyc2lvbi1jaGVjayIKCQkJXSwKCQkJWwoJCQkJImhheGVsaWIiLAoJCQkJInJ1biIsCgkJCQkibGltZSIsCgkJCQkiZGlzcGxheSIsCgkJCQkiJHtwcm9qZWN0RmlsZX0iLAoJCQkJIiR7dGFyZ2V0fSIsCgkJCQkiJHtidWlsZFR5cGVBcmdzfSIsCgkJCQkiLW5vY29sb3IiLAoJCQkJIi1EZGlzYWJsZS12ZXJzaW9uLWNoZWNrIgoJCQldCgkJXSwKCQkiY3dkIjogIiR7cHJvamVjdERpcn0iLAoJCSJvdXRwdXQiOiAiaHhtbCIKCX0sCgkiZG9jcyI6IFsKCQl7CgkJCSJsaWIiOiAibGltZSIsCgkJCSJtZXRhZGF0YSI6ICJidWlsdGluOmxpbWUubWV0YS5qc29uIgoJCX0sCgkJewoJCQkibGliIjogIm9wZW5mbCIsCgkJCSJtZXRhZGF0YSI6ICJidWlsdGluOm9wZW5mbC5tZXRhLmpzb24iCgkJfSwKCQl7CgkJCSJsaWIiOiAiZmxpeGVsIiwKCQkJImRlZmluZXMiOiAiYnVpbHRpbjpmbGl4ZWwuZGVmaW5lcy5qc29uIgoJCX0KCV0sCgkidGFza3MiOiBbCgkJewoJCQkibGFiZWwiOiAibGltZTogdGVzdCAke3RhcmdldH0iLAoJCQkiY29tbWFuZCI6IFsKCQkJCSJoYXhlbGliIiwKCQkJCSJydW4iLAoJCQkJImxpbWUiLAoJCQkJInRlc3QiLAoJCQkJIiR7cHJvamVjdEZpbGV9IiwKCQkJCSIke3RhcmdldH0iLAoJCQkJIiR7YnVpbGRUeXBlQXJnc30iCgkJCV0sCgkJCSJkZWJ1Z1RhcmdldHMiOiBbCgkJCQkiaHRtbDUiLAoJCQkJImhsIiwKCQkJCSIke2hvc3RQbGF0Zm9ybX0iCgkJCV0KCQl9LAoJCXsKCQkJImxhYmVsIjogImxpbWU6IGJ1aWxkICR7dGFyZ2V0fSIsCgkJCSJjb21tYW5kIjogWwoJCQkJImhheGVsaWIiLAoJCQkJInJ1biIsCgkJCQkibGltZSIsCgkJCQkiYnVpbGQiLAoJCQkJIiR7cHJvamVjdEZpbGV9IiwKCQkJCSIke3RhcmdldH0iLAoJCQkJIiR7YnVpbGRUeXBlQXJnc30iCgkJCV0KCQl9CgldCn0K"},{ name : "docs/flixel.defines.json", data : "WwoJeyJkZWZpbmUiOiAiRkxYX05PX01PVVNFIiwgImRvYyI6ICJSZW1vdmVzIG1vdXNlIHN1cHBvcnQgKEZseEcubW91c2UpLiBXaXRob3V0IGl0LCBmbGl4ZWwgZGVmaW5lcyBGTFhfTU9VU0UuIn0sCgl7ImRlZmluZSI6ICJGTFhfTk9fTU9VU0VfQURWQU5DRUQiLCAiZG9jIjogIlJlbW92ZXMgbWlkZGxlIGFuZCByaWdodCBtb3VzZSBidXR0b24gZXZlbnRzLiBXaXRob3V0IGl0IChhbmQgb3V0c2lkZSBGbGFzaCA8IDExLjIpLCBmbGl4ZWwgZGVmaW5lcyBGTFhfTU9VU0VfQURWQU5DRUQuIn0sCgl7ImRlZmluZSI6ICJGTFhfTk9fTkFUSVZFX0NVUlNPUiIsICJkb2MiOiAiRGlzYWJsZXMgbmF0aXZlIG1vdXNlIGN1cnNvcnMgb24gRmxhc2ggMTAuMisuIFdpdGhvdXQgaXQsIGZsaXhlbCBkZWZpbmVzIEZMWF9OQVRJVkVfQ1VSU09SIHRoZXJlLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX05PX1RPVUNIIiwgImRvYyI6ICJSZW1vdmVzIHRvdWNoIHN1cHBvcnQgKEZseEcudG91Y2hlcykuIFdpdGhvdXQgaXQsIGZsaXhlbCBkZWZpbmVzIEZMWF9UT1VDSC4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19LRVlCT0FSRCIsICJkb2MiOiAiUmVtb3ZlcyBrZXlib2FyZCBzdXBwb3J0IChGbHhHLmtleXMpLiBXaXRob3V0IGl0LCBmbGl4ZWwgZGVmaW5lcyBGTFhfS0VZQk9BUkQuIn0sCgl7ImRlZmluZSI6ICJGTFhfTk9fR0FNRVBBRCIsICJkb2MiOiAiUmVtb3ZlcyBnYW1lcGFkIHN1cHBvcnQgKEZseEcuZ2FtZXBhZHMpLiBXaXRob3V0IGl0LCBmbGl4ZWwgZGVmaW5lcyBGTFhfR0FNRVBBRC4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19TT1VORF9TWVNURU0iLCAiZG9jIjogIlJlbW92ZXMgZmxpeGVsJ3Mgc291bmQgc3lzdGVtIChGbHhHLnNvdW5kKS4gQWxzbyBkaXNhYmxlcyB0aGUgc291bmQgdHJheSBhbmQgcGl0Y2ggY29udHJvbC4gV2l0aG91dCBpdCwgZmxpeGVsIGRlZmluZXMgRkxYX1NPVU5EX1NZU1RFTS4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19TT1VORF9UUkFZIiwgImRvYyI6ICJSZW1vdmVzIHRoZSB2b2x1bWUgc291bmQgdHJheS4gV2l0aG91dCBpdCAoYW5kIHdpdGggdGhlIHNvdW5kIHN5c3RlbSksIGZsaXhlbCBkZWZpbmVzIEZMWF9TT1VORF9UUkFZLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX05PX0ZPQ1VTX0xPU1RfU0NSRUVOIiwgImRvYyI6ICJSZW1vdmVzIHRoZSBzY3JlZW4gc2hvd24gd2hlbiB0aGUgZ2FtZSBsb3NlcyBmb2N1cy4gV2l0aG91dCBpdCwgZmxpeGVsIGRlZmluZXMgRkxYX0ZPQ1VTX0xPU1RfU0NSRUVOLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX05PX0RFQlVHIiwgImRvYyI6ICJSZW1vdmVzIHRoZSBkZWJ1Z2dlciBhbmQgZGVidWcgZHJhd2luZy4gV2l0aG91dCBpdCwgZmxpeGVsIGRlZmluZXMgRkxYX0RFQlVHICh3aGljaCBhbHNvIGRlZmluZXMgRkxYX1RSQUNLX0dSQVBISUNTKS4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19IRUFMVEgiLCAiZG9jIjogIlJlbW92ZXMgRmx4T2JqZWN0LmhlYWx0aC4ifSwKCXsiZGVmaW5lIjogIkZMWF9IRUFMVEgiLCAiZG9jIjogIkVuYWJsZXMgRmx4T2JqZWN0LmhlYWx0aC4gRmxpeGVsIGRlZmluZXMgaXQgYXV0b21hdGljYWxseSB3aGVuIG5laXRoZXIgRkxYX0hFQUxUSCBub3IgRkxYX05PX0hFQUxUSCBpcyBzZXQuIn0sCgl7ImRlZmluZSI6ICJGTFhfUkVDT1JEIiwgImRvYyI6ICJFbmFibGVzIGZsaXhlbCdzIHJlcGxheSByZWNvcmRpbmcgc3VwcG9ydC4ifSwKCXsiZGVmaW5lIjogIkZMWF9SRU5ERVJfVFJJQU5HTEUiLCAiZG9jIjogIkFkZGl0aW9uYWwgcmVuZGVyaW5nIGRlZmluZS4ifSwKCXsiZGVmaW5lIjogIkZMWF80X0xFR0FDWV9DT0xMSVNJT04iLCAiZG9jIjogIlVzZXMgZmxpeGVsIDQuMCBsZWdhY3kgY29sbGlzaW9uLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX05PX1BPSU5UX1BPT0wiLCAiZG9jIjogIlNpbXBsaWZpZXMgRmx4UG9pbnQgYnkgbm90IHBvb2xpbmcgaW5zdGFuY2VzLCB3aGljaCBjYW4gaW5jcmVhc2UgR0MgZnJlcXVlbmN5LiBXaXRob3V0IGl0LCBmbGl4ZWwgZGVmaW5lcyBGTFhfUE9JTlRfUE9PTC4ifSwKCXsiZGVmaW5lIjogIkZMWF9OT19QSVRDSCIsICJkb2MiOiAiRGlzYWJsZXMgc291bmQgcGl0Y2ggY29udHJvbC4gRGVmaW5lZCBhdXRvbWF0aWNhbGx5IG9uIEZsYXNoIGFuZCB3aXRoIEZMWF9OT19TT1VORF9TWVNURU07IG90aGVyd2lzZSBmbGl4ZWwgZGVmaW5lcyBGTFhfUElUQ0guIn0sCgl7ImRlZmluZSI6ICJGTFhfTk9fU0FWRSIsICJkb2MiOiAiUmVtb3ZlcyBGbHhHLnNhdmUuIFdpdGhvdXQgaXQsIGZsaXhlbCBkZWZpbmVzIEZMWF9TQVZFLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX1RSQUNLX1BPT0xTIiwgImRvYyI6ICJBZGRzIHRyYWNrZXJzIHRvIEZseFBvb2wgaW5zdGFuY2VzLiBPbmx5IGFsbG93ZWQgaW4gZGVidWcgYnVpbGRzLiJ9LAoJeyJkZWZpbmUiOiAiRkxYX1RSQUNLX0dSQVBISUNTIiwgImRvYyI6ICJBZGRzIGBjcmVhdGlvbkluZm9gIHRvIEZseEdyYXBoaWMgaW5zdGFuY2VzLiBEZWZpbmVkIGF1dG9tYXRpY2FsbHkgd2l0aCBGTFhfREVCVUcuIn0sCgl7ImRlZmluZSI6ICJGTFhfQ1VTVE9NX0FTU0VUU19ESVJFQ1RPUlkiLCAiZG9jIjogIkxvYWRzIGFzc2V0cyBmcm9tIHRoZSBnaXZlbiByZWxhdGl2ZSBvciBhYnNvbHV0ZSBkaXJlY3RvcnkgaW5zdGVhZCBvZiB0aGUgYnVpbGQncyBhc3NldHMuIFVubGlrZSBvdGhlciBmbGFncywgaXQgdGFrZXMgYSBwYXRoLiBTeXMgdGFyZ2V0cyBvbmx5LiBXaGVuIGFzc2V0cyBjb21lIGVudGlyZWx5IGZyb20gb3V0c2lkZSB0aGUgYnVpbGQgZGlyZWN0b3J5LCBjb25zaWRlciBkaXNhYmxpbmcgPGFzc2V0cz4gdGFncyBpbiBQcm9qZWN0LnhtbCB0byBzYXZlIG1lbW9yeS4iLCAicGFyYW1zIjogWyJwYXRoIl19LAoJeyJkZWZpbmUiOiAiRkxYX0RFRkFVTFRfU09VTkRfRVhUIiwgImRvYyI6ICJBbGxvd3Mgc291bmQgcGF0aHMgd2l0aG91dCBhbiBleHRlbnNpb246IHRoZSB0YXJnZXQncyBkZWZhdWx0IHR5cGUgaXMgdXNlZCAob2dnIGV2ZXJ5d2hlcmUgZXhjZXB0IEZsYXNoLCB3aGljaCB1c2VzIG1wMykuIFNldCBpdCB0byBhIHN0cmluZyB0byB1c2UgdGhhdCBleHRlbnNpb24gaW5zdGVhZC4iLCAicGFyYW1zIjogWyJleHRlbnNpb24iXX0sCgl7ImRlZmluZSI6ICJGTFhfREVCVUdHRVJfU0NBTEUiLCAiZG9jIjogIk1ha2VzIHRoZSBkZWJ1Z2dlciB3aW5kb3dzIGJpZ2dlci4iLCAicGFyYW1zIjogWyJzY2FsZSJdfSwKCXsiZGVmaW5lIjogIkZMWF9VTklUX1RFU1QiLCAiZG9jIjogIkRlZmluZWQgaW4gSGF4ZUZsaXhlbCBDSSB0ZXN0czsgZG8gbm90IHVzZS4ifSwKCXsiZGVmaW5lIjogIkZMWF9DT1ZFUkFHRV9URVNUIiwgImRvYyI6ICJEZWZpbmVkIGluIEhheGVGbGl4ZWwgQ0kgdGVzdHM7IGRvIG5vdCB1c2UuIn0sCgl7ImRlZmluZSI6ICJGTFhfU1dGX1ZFUlNJT05fVEVTVCIsICJkb2MiOiAiRGVmaW5lZCBpbiBIYXhlRmxpeGVsIENJIHRlc3RzOyBkbyBub3QgdXNlLiJ9Cl0K"}];
 js_Boot.__toStr = ({ }).toString;
 Xml.Element = 0;
 Xml.PCData = 1;
@@ -7457,6 +7716,7 @@ bridge_lsp_Registrations.markupTriggers = ["<","\"","/"];
 bridge_lsp_Registrations.declaredUpFront = ["textDocument/typeDefinition","textDocument/implementation"];
 bridge_lsp_TargetCommands.target = new EReg("^Haxe: target (.+?)( \\(current\\))?$","");
 bridge_lsp_TargetCommands.buildType = new EReg("^Haxe: build type (.+?)( \\(current\\))?$","");
+bridge_lsp_ZedDebug.header = ["// Generated by the Haxe extension from the project's tasks, for the Haxe debugger extension, and kept up to date when targets change.","// To keep your own debug configurations here instead, delete these comment lines; the extension then leaves this file alone.","// To stop generating it, set \"project\": { \"debugConfigurations\": false } in the haxe-language-server settings."];
 bridge_lsp_ZedTasks.header = ["// Generated by the Haxe extension from the detected project, and kept up to date when targets change.","// To keep your own tasks here instead, delete these comment lines; the extension then leaves this file alone.","// To stop generating it, set \"project\": { \"tasks\": false } in the haxe-language-server settings."];
 bridge_markup_HaxeUiProvider.notLayouts = ["project.xml","include.xml","haxelib.xml","androidmanifest.xml"];
 bridge_markup_HaxeUiProvider.fieldAliases = (function($this) {
@@ -7470,6 +7730,20 @@ bridge_markup_HaxeUiProvider.fieldAliases = (function($this) {
 bridge_markup_HaxeUiProvider.metadata = new EReg("@:xml\\s*\\(","");
 bridge_markup_HaxeUiProvider.classDeclaration = new EReg("\\bclass\\s+([A-Za-z_]\\w*)","");
 bridge_markup_HaxeUiProvider.buildReference = new EReg("(?:ComponentMacros|ComponentBuilder)\\.build\\(\\s*[\"']([^\"']+\\.xml)[\"']","g");
+bridge_project_CommandProvider.hostPlatform = (function($this) {
+	var $r;
+	switch(process.platform) {
+	case "darwin":
+		$r = "mac";
+		break;
+	case "win32":
+		$r = "windows";
+		break;
+	default:
+		$r = "linux";
+	}
+	return $r;
+}(this));
 bridge_project_HxmlProvider.outputFlags = ["-js","--js","-cpp","--cpp","--cppia","-hl","--hl","-neko","--neko","-python","--python","-lua","--lua","-php","--php","-cs","--cs","-java","--java","--jvm","-swf","--swf","-x","--interp","--run","--custom-target"];
 bridge_rpc_Connection.contentLength = new EReg("Content-Length:\\s*(\\d+)","i");
 bridge_toolchain_Toolchain.defaultOrder = ["provider","lix","haxe-manager","path"];

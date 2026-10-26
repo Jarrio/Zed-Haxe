@@ -4,6 +4,7 @@ import bridge.Settings.ProjectSettings;
 import bridge.lsp.Client.MessageType;
 import bridge.project.DocPacks;
 import bridge.project.ProjectProvider.ProjectContext;
+import bridge.project.ProjectProvider.TaskSpec;
 import bridge.project.ProjectResolver;
 import bridge.toolchain.Haxerc;
 import bridge.toolchain.Toolchain;
@@ -46,6 +47,7 @@ class Session {
 	var buildTypeOverride:Null<String>;
 
 	var tasksWarned = false;
+	var debugWarned = false;
 	var reresolveTimer:Null<haxe.Timer>;
 	var resolving = false;
 	var resolveAgain = false;
@@ -333,6 +335,10 @@ class Session {
 	/** Writes the project's tasks to `.zed/tasks.json`, unless turned off or the file is the user's. **/
 	function writeTasks() {
 		final current = project;
+		// Off with the tasks unless set on its own: turning tasks off means no generated files in .zed.
+		if (current != null && (settings.debugConfigurations ?? settings.tasks) != false) {
+			writeDebugConfigurations(current.tasks, current.target);
+		}
 		if (settings.tasks == false || current == null || current.tasks.length == 0) {
 			return;
 		}
@@ -356,6 +362,24 @@ class Session {
 			}
 		} catch (e) {
 			Log.info('could not write ${ZedTasks.path(workspaceRoot)}: $e');
+		}
+	}
+
+	/** `.zed/debug.json` for the Haxe debugger extension, from the same tasks (see `ZedDebug`). **/
+	function writeDebugConfigurations(tasks:Array<TaskSpec>, target:Null<String>) {
+		final file = ZedDebug.path(workspaceRoot);
+		final count = [for (task in tasks) if (task.debug != null) task].length;
+		try {
+			switch ZedDebug.write(workspaceRoot, ZedDebug.render(tasks, workspaceRoot, target), count) {
+				case Written:
+					Log.info('wrote $count debug configurations to $file');
+				case NotOurs if (!debugWarned):
+					debugWarned = true;
+					Log.info('$file is your own file, so the Haxe debug configurations were not written to it');
+				case _:
+			}
+		} catch (e) {
+			Log.info('could not write $file: $e');
 		}
 	}
 

@@ -79,6 +79,11 @@
 				"${projectFile}",
 				"${target}",
 				"${buildTypeArgs}"
+			],
+			"debugTargets": [
+				"html5",
+				"hl",
+				"${hostPlatform}"
 			]
 		},
 		{

@@ -70,10 +70,17 @@ class ZedTasks {
 
 	/** Writes `content` unless the file belongs to the user or already says the same. **/
 	public static function write(workspaceRoot:String, content:String):TasksWrite {
-		final file = path(workspaceRoot);
+		return writeGenerated(path(workspaceRoot), content, header[0]);
+	}
+
+	/**
+		Writes a generated file: only if it doesn't exist yet or starts with `firstLine`, the header that
+		marks it as generated. Deleting the header makes the file the user's.
+	**/
+	public static function writeGenerated(file:String, content:String, firstLine:String):TasksWrite {
 		if (FileSystem.exists(file)) {
 			final existing = File.getContent(file);
-			if (!isGenerated(existing)) {
+			if (!StringTools.startsWith(StringTools.ltrim(existing), firstLine)) {
 				return NotOurs;
 			}
 			if (existing == content) {
@@ -85,7 +92,7 @@ class ZedTasks {
 		return Written;
 	}
 
-	static function rank(task:TaskSpec, currentTarget:Null<String>):Int {
+	public static function rank(task:TaskSpec, currentTarget:Null<String>):Int {
 		return task.target != null && task.target == currentTarget ? 0 : 1;
 	}
 

@@ -8,6 +8,7 @@ import bridge.util.Vars;
 import haxe.DynamicAccess;
 import haxe.Json;
 import haxe.io.Path;
+import js.Node.process;
 import js.lib.Promise;
 import sys.FileSystem;
 import sys.io.File;
@@ -89,11 +90,15 @@ class CommandProvider implements ProjectProvider {
 			final forTargets:Array<Null<String>> = perTarget ? cast targets : [null];
 			for (target in forTargets) {
 				final values = placeholders(ctx, file, target);
+				final command = Vars.expandArgs(template.command, values, lists);
+				final debuggable = target != null && template.debugTargets != null
+					&& template.debugTargets.map(name -> Vars.expand(name, values)).contains(target);
 				result.push({
 					label: Vars.expand(template.label, values),
-					command: Vars.expandArgs(template.command, values, lists),
+					command: command,
 					cwd: Vars.expand(template.cwd ?? "${projectDir}", values),
-					target: target
+					target: target,
+					debug: debuggable ? {command: command} : null
 				});
 			}
 		}
@@ -114,8 +119,16 @@ class CommandProvider implements ProjectProvider {
 			projectDir: Path.directory(file),
 			projectFile: Path.withoutDirectory(file),
 			target: target ?? "",
-			buildType: ctx.settings.buildType ?? ""
+			buildType: ctx.settings.buildType ?? "",
+			hostPlatform: hostPlatform
 		};
+	}
+
+	/** This machine's desktop target as Lime and Ceramic name it. **/
+	public static final hostPlatform = switch process.platform {
+		case "darwin": "mac";
+		case "win32": "windows";
+		case _: "linux";
 	}
 
 	function run(spec:CommandSpec, values:DynamicAccess<String>, ctx:ProjectContext):Promise<ExecResult> {

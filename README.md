@@ -69,7 +69,7 @@ Building the extension yourself needs Haxe 4.3.7; see "Development".
 |---|---|---|
 | Lime, OpenFL, HaxeFlixel | `project.xml`, `Project.xml`, `project.hxp`, `project.lime` | `lime display <target>` (or `haxelib run lime display`) |
 | Ceramic | `ceramic.yml` | `ceramic clay hxml <target> --setup`; Haxe from `ceramic haxe` |
-| Plain Haxe | any `.hxml` | the one that builds something and sees the most of the project's class paths, then the best-named one (`build.hxml`, `main`, `lsp`, ...) |
+| Plain Haxe | any `.hxml` | the one that builds something and sees the most of the project's class paths, then the best-named one (`completion.hxml`, `lsp`, `main`, `build.hxml`, ...); files using `--run` are skipped, because `--run` passes the language server's own arguments to your program |
 | Anything else | | `src/` (or the folder) as class path |
 
 Project files are searched in the project folder and a few levels below it.
@@ -112,6 +112,7 @@ Everything is optional. Put project settings in `.zed/settings.json`, or in your
 | `commands` | Replace tool executables with absolute paths: `{"lime": "/opt/lime/lime", "ceramic": "/opt/ceramic/tools/ceramic"}` |
 | `providers`, `resolvers` | Your own project providers and Haxe lookups, see below |
 | `tasks` | `false` stops writing `.zed/tasks.json` (see below) |
+| `debugConfigurations` | `false` stops writing `.zed/debug.json`; defaults to the value of `tasks` (see below) |
 | `markup` | `false` turns off completion and hover in UI markup (see below) |
 | `privateMembers` | Where other classes' private members and `_`-prefixed fields go in completion lists: `"last"` (default), `"hide"`, or `"show"` to keep the compiler's order. Members of the class you are editing always stay in place |
 | `traceFile` | Append every LSP message to this file, for debugging |
@@ -182,16 +183,35 @@ Zed extensions can't add their own buttons or status bar items, so this uses Zed
 target and build type of the project, with the current ones marked:
 
 ```
-Haxe: target html5 (current)
-Haxe: target hl
 Haxe: build type debug
 Haxe: build type release (current)
 Haxe: choose target
+Haxe: target hl
+Haxe: target html5 (current)
 ```
 
 Picking one switches without a restart, and is remembered for the project. `project.target` and
-`project.buildType` in settings set the starting point. To open the list with a key, bind
-`lsp_command_selector::Toggle` in your keymap.
+`project.buildType` in settings set the starting point.
+
+Extensions can't add entries to Zed's command palette, but aliases can lead there. With these in your
+Zed settings, typing `haxe`, `hxml` or `completion` in the command palette and pressing Enter opens
+the list:
+
+```json
+"command_aliases": {
+  "haxe": "lsp_command_selector::Toggle",
+  "hxml": "lsp_command_selector::Toggle",
+  "completion": "lsp_command_selector::Toggle"
+}
+```
+
+An alias applies only when the whole text you typed matches it, and case matters. The list shows the
+Haxe commands while a Haxe file is the active tab. To open it with a key instead, add this to your
+keymap (`zed: open keymap`):
+
+```json
+[{ "context": "Workspace", "bindings": { "alt-shift-h": "lsp_command_selector::Toggle" } }]
+```
 
 **Tasks:** the extension writes the project's build and run commands to `.zed/tasks.json`, so
 `task: spawn` and `task: rerun` offer them (Zed sorts the list itself):
@@ -214,6 +234,19 @@ Provider definitions bring their own task templates, so a provider you add in se
 ```
 
 A template that mentions `${target}` becomes one task per target.
+
+**Debugging:** for the Haxe debugger extension, the extension also writes `.zed/debug.json` with one
+entry per task it can debug, so `debugger: start` (F5) always lists them. Zed's own list only offers
+tasks you haven't run since it started. Entries cover `--interp`, `--cpp`, `--cppia`, `--hl` and
+`--js` builds, `lime test` for html5, hl and this machine's desktop target, and `ceramic run` for web
+and this machine's desktop target. A cppia script gets the host that runs it: the hxml with
+`-D scriptable` whose `--cpp` folder holds the script, named the way hxcpp names it (main class or
+`HAXE_OUTPUT_FILE`, `-debug` for a debug build, `.exe` on Windows). A script with no host is left out.
+Paths come from the hxml files and are updated when they change. The same rules as for tasks apply:
+only a generated file is rewritten, and `"project": { "debugConfigurations": false }` (or
+`"tasks": false`) turns it off. Without the debugger extension installed, Zed ignores these entries.
+A task template in a provider definition opts in with `"debugTargets"`, e.g.
+`["html5", "hl", "${hostPlatform}"]`.
 
 ## UI markup (HaxeUI)
 

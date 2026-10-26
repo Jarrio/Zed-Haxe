@@ -69,6 +69,12 @@ typedef TaskTemplate = {
 	var label:String;
 	var command:Array<String>;
 	var ?cwd:String;
+
+	/**
+		Targets whose task the Haxe debugger extension can run, listed in `.zed/debug.json`.
+		`${hostPlatform}` is this machine's desktop target: `linux`, `mac` or `windows`.
+	**/
+	var ?debugTargets:Array<String>;
 }
 
 typedef CommandSpec = {

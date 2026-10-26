@@ -51,6 +51,12 @@ typedef ProjectSettings = {
 	/** Write the project's build and run tasks to `.zed/tasks.json` (only a file the extension created). Default true. **/
 	var ?tasks:Bool;
 
+	/**
+		Write debug configurations for the Haxe debugger extension to `.zed/debug.json` (only a file the
+		extension created), one per task it can debug. Default: the same as `tasks`.
+	**/
+	var ?debugConfigurations:Bool;
+
 	/** Completion, hover and go to definition in UI markup (HaxeUI's `@:xml` and `.xml` layouts). Default true. **/
 	var ?markup:Bool;
 

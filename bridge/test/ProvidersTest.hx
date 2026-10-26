@@ -215,6 +215,88 @@ class ProvidersTest extends utest.Test {
 		Assert.same(["debug", "release"], provider.buildTypes());
 	}
 
+	function testHxmlProviderSkipsRunFilesButRunsThem() {
+		// Like hx2go: `--run` hands everything after it to the program, the language server's own arguments
+		// included, so completion can't use those files. Running them as tasks is fine.
+		final dir = Fixture.create({
+			"Compile-eval.hxml": "-cp source\n-cp hxb-parser\n--run hx2go.Main",
+			"again.hxml": "Compile-eval.hxml",
+			"Bootstrap.hxml": "-cp source\n-main hx2go.Main\n-cp hxb-parser\n--custom-target go=output/bootstrap",
+			"completion.hxml": "-cp source\n-main hx2go.Main\n-cp hxb-parser\n--no-output\n--custom-target go=output"
+		});
+		final provider = new HxmlProvider();
+		final found = provider.detect(Fixture.context(dir)).map(Path.withoutDirectory);
+		Assert.same(["completion.hxml", "Bootstrap.hxml"], found);
+		final labels = provider.tasks(Fixture.context(dir), Path.join([dir, "completion.hxml"]), found).map(t -> t.label);
+		Assert.same(["haxe: completion.hxml", "haxe: Bootstrap.hxml"], labels.slice(0, 2));
+		final runs = labels.slice(2);
+		runs.sort(Reflect.compare);
+		Assert.same(["haxe: Compile-eval.hxml", "haxe: again.hxml"], runs);
+	}
+
+	function testHxmlDebugConfigurations() {
+		// Like linc_sdl3's demo: a cppia host (scriptable --cpp), a plain hxcpp build, and a script the host runs.
+		final dir = Fixture.create({
+			"common.hxml": "-cp ..\n--debug\n-D HXCPP_CPP17",
+			"cppia.hxml": "common.hxml\n-cp cppia\n-main Main\n-D scriptable\n--cpp bin/cppia\n--dce no",
+			"hxcpp.hxml": "common.hxml\n-cp hxcpp\n-main Main\n--cpp bin/cpp",
+			"script.hxml": "common.hxml\n-cp script\n-main Client\n--cppia bin/cppia/script.cppia",
+			"orphan.hxml": "-main Client\n--cppia elsewhere/script.cppia",
+			"tool.hxml": "-cp src\n--run Tool",
+			"neko.hxml": "-main Main\n--neko bin/main.n",
+			"eval.hxml": "-main Main\n--interp"
+		});
+		final provider = new HxmlProvider();
+		final ctx = Fixture.context(dir);
+		final targets = provider.detect(ctx).map(Path.withoutDirectory);
+		final debug = [for (task in provider.tasks(ctx, Path.join([dir, "cppia.hxml"]), targets)) task.label => task.debug];
+		Assert.same({hxml: "cppia.hxml"}, debug["haxe: cppia.hxml"]);
+		Assert.same({hxml: "hxcpp.hxml"}, debug["haxe: hxcpp.hxml"]);
+		Assert.same({hxml: "eval.hxml"}, debug["haxe: eval.hxml"]);
+		Assert.same({hxml: "script.hxml", program: "bin/cppia/Main-debug" + exe}, debug["haxe: script.hxml"]);
+		// A script no host runs, a --run tool and a target the debugger doesn't handle: tasks, but nothing to debug.
+		for (label in ["haxe: orphan.hxml", "haxe: tool.hxml", "haxe: neko.hxml"]) {
+			Assert.isTrue(debug.exists(label), label);
+			Assert.isNull(debug[label], label);
+		}
+	}
+
+	function testCppiaHostNamedLikeHxcpp() {
+		final dir = Fixture.create({
+			"host.hxml": "-main game.Host\n-D scriptable\n--cpp out",
+			"named.hxml": "-main game.Host\n-D scriptable\n-D HAXE_OUTPUT_FILE=Game\n--debug\n-D DEBUGSUFFIX=_d\n--cpp named",
+			"a.hxml": "-main A\n--cppia out/scripts/a.cppia",
+			"b.hxml": "-main B\n--cppia named/b.cppia"
+		});
+		final provider = new HxmlProvider();
+		final ctx = Fixture.context(dir);
+		final tasks = provider.tasks(ctx, Path.join([dir, "a.hxml"]), ["a.hxml", "b.hxml"]);
+		// A release build has no suffix; the package isn't part of the name.
+		Assert.equals("out/Host" + exe, tasks[0].debug?.program);
+		Assert.equals("named/Game_d" + exe, tasks[1].debug?.program);
+	}
+
+	function testCommandProviderDebugTargets() {
+		final dir = Fixture.create({"project.xml": ""});
+		final provider = new CommandProvider({
+			name: "fake",
+			detect: ["project.xml"],
+			args: {command: ["true"]},
+			tasks: [
+				{label: "fake: test ${target}", command: ["fake", "test", "${target}"], debugTargets: ["html5", "${hostPlatform}"]},
+				{label: "fake: build ${target}", command: ["fake", "build", "${target}"]}
+			]
+		});
+		final tasks = provider.tasks(Fixture.context(dir), Path.join([dir, "project.xml"]), ["html5", "android", CommandProvider.hostPlatform]);
+		final debug = [for (task in tasks) task.label => task.debug];
+		Assert.same({command: ["fake", "test", "html5"]}, debug["fake: test html5"]);
+		Assert.same({command: ["fake", "test", CommandProvider.hostPlatform]}, debug["fake: test " + CommandProvider.hostPlatform]);
+		Assert.isNull(debug["fake: test android"]);
+		Assert.isNull(debug["fake: build html5"]);
+	}
+
+	static final exe = js.Node.process.platform == "win32" ? ".exe" : "";
+
 	function testHxmlTasksSkipIncludedFiles() {
 		final dir = Fixture.create({"common.hxml": "-cp src", "build.hxml": "common.hxml\n--interp"});
 		final provider = new HxmlProvider();

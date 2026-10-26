@@ -32,6 +32,21 @@ typedef TaskSpec = {
 
 	/** The target the task is for, if any (tasks for the current target are listed first). **/
 	var ?target:String;
+
+	/** How the Haxe debugger extension (haxe-debug) runs this task, for `.zed/debug.json`. None if it can't. **/
+	var ?debug:TaskDebug;
+}
+
+/** A launch configuration for haxe-debug's "Haxe" adapter. Paths are relative to the task's `cwd`. **/
+typedef TaskDebug = {
+	/** Build with this hxml and debug what it produces. **/
+	var ?hxml:String;
+
+	/** The host executable that runs a cppia script (`hxml` builds the script). **/
+	var ?program:String;
+
+	/** Or run this command (Lime, Ceramic) and debug what it starts. **/
+	var ?command:Array<String>;
 }
 
 typedef ProviderResult = {
